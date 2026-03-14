@@ -1,129 +1,134 @@
-// ============================================================
-// MarketTracker Backend Proxy — Yahoo Finance
-// Deploy FREE on Render.com
-// ============================================================
+const express = require('express');
+const cors = require('cors');
+const https = require('https');
 
-const express = require("express");
-const cors = require("cors");
 const app = express();
-const PORT = process.env.PORT || 3001;
-
-app.use(cors()); // Allow all origins (personal use)
+app.use(cors());
 app.use(express.json());
 
-// ── Symbol Map ──────────────────────────────────────────────
-// NSE stocks use .NS suffix, BSE use .BO on Yahoo Finance
+// ── Symbol map: app id → Yahoo Finance symbol
 const SYMBOL_MAP = {
-  // Indices
-  nifty50:   "^NSEI",
-  banknifty: "^NSEBANK",
-  sensex:    "^BSESN",
-  bankex:    "BANKEX.BO",
-  finnifty:  "NIFTY_FIN_SERVICE.NS",
-  midcap:    "^NSEMDCP50",
-  smallcap:  "^NSESMALLCAP",
-  niftyit:   "^CNXIT",
-
-  // Stocks (NSE)
-  reliance:  "RELIANCE.NS",
-  tcs:       "TCS.NS",
-  hdfcbank:  "HDFCBANK.NS",
-  infosys:   "INFY.NS",
-  rategain:  "RATEGAIN.NS",
-  olectra:   "OLECTRA.NS",
-  itc:       "ITC.NS",
-  bajfinance:"BAJFINANCE.NS",
-  axisbank:  "AXISBANK.NS",
-  wipro:     "WIPRO.NS",
-  sbi:       "SBIN.NS",
-  tatasteel: "TATASTEEL.NS",
-  hcltech:   "HCLTECH.NS",
-  sunpharma: "SUNPHARMA.NS",
-  maruti:    "MARUTI.NS",
-  titan:     "TITAN.NS",
-  ltim:      "LTIM.NS",
-  ultracemco:"ULTRACEMCO.NS",
-  nestleind: "NESTLEIND.NS",
-  asianpaint:"ASIANPAINT.NS",
+  nifty50:    '^NSEI',
+  banknifty:  '^NSEBANK',
+  sensex:     '^BSESN',
+  bankex:     'BANKEX.BO',
+  finnifty:   'NIFTY_FIN_SERVICE.NS',
+  midcap:     '^NSEMDCP50',
+  smallcap:   'NIFTYSMLCAP250.NS',
+  niftyit:    '^CNXIT',
+  reliance:   'RELIANCE.NS',
+  tcs:        'TCS.NS',
+  hdfcbank:   'HDFCBANK.NS',
+  infosys:    'INFY.NS',
+  rategain:   'RATEGAIN.NS',
+  olectra:    'OLECTRA.NS',
+  itc:        'ITC.NS',
+  bajfinance: 'BAJFINANCE.NS',
+  axisbank:   'AXISBANK.NS',
+  wipro:      'WIPRO.NS',
+  sbi:        'SBIN.NS',
+  tatasteel:  'TATASTEEL.NS',
+  hcltech:    'HCLTECH.NS',
+  sunpharma:  'SUNPHARMA.NS',
+  maruti:     'MARUTI.NS',
+  titan:      'TITAN.NS',
 };
 
-// ── Fetch single quote from Yahoo Finance ──────────────────
-async function fetchYahooQuote(yahooSymbol) {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=1d&range=1d`;
-
-  const res = await fetch(url, {
-    headers: {
-      "User-Agent": "Mozilla/5.0",
-      "Accept": "application/json",
-    },
+function fetchUrl(url) {
+  return new Promise((resolve, reject) => {
+    const options = {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json',
+      }
+    };
+    https.get(url, options, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch(e) { reject(new Error('Parse error')); }
+      });
+    }).on('error', reject);
   });
-
-  if (!res.ok) throw new Error(`Yahoo returned ${res.status}`);
-  const data = await res.json();
-
-  const meta = data?.chart?.result?.[0]?.meta;
-  if (!meta) throw new Error("No meta in response");
-
-  const price         = meta.regularMarketPrice ?? 0;
-  const prevClose     = meta.previousClose ?? meta.chartPreviousClose ?? price;
-  const change        = price - prevClose;
-  const changePct     = prevClose !== 0 ? (change / prevClose) * 100 : 0;
-  const dayHigh       = meta.regularMarketDayHigh ?? price;
-  const dayLow        = meta.regularMarketDayLow  ?? price;
-  const fiftyTwoWkH   = meta.fiftyTwoWeekHigh ?? 0;
-  const fiftyTwoWkL   = meta.fiftyTwoWeekLow  ?? 0;
-  const volume        = meta.regularMarketVolume ?? 0;
-  const mktCap        = meta.marketCap ?? null;
-
-  return { price, prevClose, change, changePct, dayHigh, dayLow, fiftyTwoWkH, fiftyTwoWkL, volume, mktCap };
 }
 
-// ── GET /quote?id=reliance ─────────────────────────────────
-app.get("/quote", async (req, res) => {
-  const id = req.query.id;
-  if (!id) return res.status(400).json({ error: "id param required" });
-
-  const yahooSym = SYMBOL_MAP[id];
-  if (!yahooSym) return res.status(404).json({ error: `Unknown id: ${id}` });
-
+// ── GET /quotes?ids=nifty50,banknifty,...
+app.get('/quotes', async (req, res) => {
   try {
-    const quote = await fetchYahooQuote(yahooSym);
-    res.json({ id, symbol: yahooSym, ...quote, ts: Date.now() });
-  } catch (e) {
+    const ids = (req.query.ids || '').split(',').filter(Boolean);
+    if (!ids.length) return res.json([]);
+
+    const symbols = ids.map(id => SYMBOL_MAP[id] || id).join(',');
+    const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbols)}&fields=regularMarketPrice,regularMarketChange,regularMarketChangePercent,regularMarketDayHigh,regularMarketDayLow,fiftyTwoWeekHigh,fiftyTwoWeekLow,regularMarketPreviousClose,regularMarketOpen,marketCap,regularMarketVolume,trailingPE`;
+
+    const data = await fetchUrl(url);
+    const quotes = data?.quoteResponse?.result || [];
+
+    const result = ids.map((id, i) => {
+      const sym = SYMBOL_MAP[id] || id;
+      const q = quotes.find(x => x.symbol === sym);
+      if (!q) return { id, error: true };
+      return {
+        id,
+        price:       q.regularMarketPrice,
+        change:      q.regularMarketChange,
+        changePct:   q.regularMarketChangePercent,
+        dayHigh:     q.regularMarketDayHigh,
+        dayLow:      q.regularMarketDayLow,
+        fiftyTwoWkH: q.fiftyTwoWeekHigh,
+        fiftyTwoWkL: q.fiftyTwoWeekLow,
+        prevClose:   q.regularMarketPreviousClose,
+        open:        q.regularMarketOpen,
+        mktCap:      q.marketCap,
+        volume:      q.regularMarketVolume,
+        pe:          q.trailingPE,
+      };
+    });
+
+    res.json(result);
+  } catch(e) {
+    console.error('Quotes error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
 
-// ── GET /quotes?ids=nifty50,banknifty,reliance ─────────────
-app.get("/quotes", async (req, res) => {
-  const ids = (req.query.ids || "").split(",").filter(Boolean);
-  if (!ids.length) return res.status(400).json({ error: "ids param required" });
+// ── GET /chart?id=nifty50&range=1d&interval=15m
+// range:    1d | 5d | 1mo | 6mo | 1y
+// interval: 15m | 1d | 1wk | 1mo
+app.get('/chart', async (req, res) => {
+  try {
+    const { id, range = '1d', interval = '15m' } = req.query;
+    if (!id) return res.status(400).json({ error: 'id required' });
 
-  const results = await Promise.allSettled(
-    ids.map(async (id) => {
-      const yahooSym = SYMBOL_MAP[id];
-      if (!yahooSym) return { id, error: "Unknown symbol" };
-      const quote = await fetchYahooQuote(yahooSym);
-      return { id, symbol: yahooSym, ...quote, ts: Date.now() };
-    })
-  );
+    const sym = SYMBOL_MAP[id] || id;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=${range}&interval=${interval}&includePrePost=false`;
 
-  const data = results.map((r, i) =>
-    r.status === "fulfilled" ? r.value : { id: ids[i], error: r.reason?.message }
-  );
-  res.json(data);
+    const data = await fetchUrl(url);
+    const chart = data?.chart?.result?.[0];
+    if (!chart) return res.status(404).json({ error: 'No chart data' });
+
+    const timestamps = chart.timestamp || [];
+    const ohlcv = chart.indicators?.quote?.[0] || {};
+
+    const candles = timestamps.map((t, i) => ({
+      t: t * 1000, // ms
+      o: ohlcv.open?.[i],
+      h: ohlcv.high?.[i],
+      l: ohlcv.low?.[i],
+      c: ohlcv.close?.[i],
+      v: ohlcv.volume?.[i],
+    })).filter(c => c.o != null && c.c != null);
+
+    res.json({ id, range, interval, candles });
+  } catch(e) {
+    console.error('Chart error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// ── GET /search?q=infosys ──────────────────────────────────
-app.get("/search", async (req, res) => {
-  const q = (req.query.q || "").toLowerCase();
-  const matches = Object.entries(SYMBOL_MAP)
-    .filter(([id, sym]) => id.includes(q) || sym.toLowerCase().includes(q))
-    .map(([id, sym]) => ({ id, symbol: sym }));
-  res.json(matches);
-});
+// Health check
+app.get('/', (req, res) => res.json({ status: 'ok', version: '2.0' }));
 
-// ── Health check ───────────────────────────────────────────
-app.get("/", (req, res) => res.json({ status: "ok", message: "MarketTracker proxy running" }));
-
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`MarketTracker proxy running on port ${PORT}`));

@@ -23,9 +23,11 @@ function fetchYahoo(path) {
       path,
       method: 'GET',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36',
-        'Accept': 'application/json',
-        'Accept-Encoding': 'gzip, deflate',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': '*/*',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Origin': 'https://finance.yahoo.com',
         'Referer': 'https://finance.yahoo.com/',
       }
     };
@@ -35,64 +37,90 @@ function fetchYahoo(path) {
       res.on('data', c => chunks.push(c));
       res.on('end', () => {
         const buf = Buffer.concat(chunks);
-        const enc = res.headers['content-encoding'];
-
+        const enc = (res.headers['content-encoding'] || '').toLowerCase();
         function parse(text) {
           try { resolve(JSON.parse(text)); }
-          catch(e) { reject(new Error('Parse error: ' + text.slice(0,100))); }
+          catch(e) { reject(new Error('Parse error: ' + text.slice(0,200))); }
         }
-
-        if (enc === 'gzip') {
-          zlib.gunzip(buf, (err, decoded) => {
-            if (err) reject(err);
-            else parse(decoded.toString('utf8'));
-          });
-        } else if (enc === 'deflate') {
-          zlib.inflate(buf, (err, decoded) => {
-            if (err) reject(err);
-            else parse(decoded.toString('utf8'));
-          });
+        if (enc.includes('br')) {
+          zlib.brotliDecompress(buf, (err, d) => err ? reject(err) : parse(d.toString()));
+        } else if (enc.includes('gzip')) {
+          zlib.gunzip(buf, (err, d) => err ? reject(err) : parse(d.toString()));
+        } else if (enc.includes('deflate')) {
+          zlib.inflate(buf, (err, d) => err ? reject(err) : parse(d.toString()));
         } else {
-          parse(buf.toString('utf8'));
+          parse(buf.toString());
         }
       });
     });
-
     req.on('error', reject);
-    req.setTimeout(12000, () => { req.destroy(); reject(new Error('Timeout')); });
+    req.setTimeout(15000, () => { req.destroy(); reject(new Error('Timeout')); });
     req.end();
   });
 }
 
+// ── /quotes — use v8/chart with interval=1d to get current price + meta
+// Chart API works, v7/quote API blocks. So we fetch each symbol via chart API.
 app.get('/quotes', async (req, res) => {
   try {
     const ids = (req.query.ids||'').split(',').filter(Boolean);
     if (!ids.length) return res.json([]);
-    const symbols = ids.map(id => SYMBOL_MAP[id]||id).join(',');
-    const fields = 'regularMarketPrice,regularMarketChange,regularMarketChangePercent,regularMarketDayHigh,regularMarketDayLow,fiftyTwoWeekHigh,fiftyTwoWeekLow,regularMarketPreviousClose,regularMarketOpen,marketCap,regularMarketVolume,trailingPE';
-    const path = `/v7/finance/quote?symbols=${encodeURIComponent(symbols)}&fields=${fields}&formatted=false&lang=en-US&region=IN`;
-    const data = await fetchYahoo(path);
-    const quotes = data?.quoteResponse?.result || [];
-    const result = ids.map(id => {
-      const sym = SYMBOL_MAP[id]||id;
-      const q = quotes.find(x=>x.symbol===sym);
-      if (!q) return {id, error:true};
-      return {
-        id, price:q.regularMarketPrice, change:q.regularMarketChange,
-        changePct:q.regularMarketChangePercent, dayHigh:q.regularMarketDayHigh,
-        dayLow:q.regularMarketDayLow, fiftyTwoWkH:q.fiftyTwoWeekHigh,
-        fiftyTwoWkL:q.fiftyTwoWeekLow, prevClose:q.regularMarketPreviousClose,
-        open:q.regularMarketOpen, mktCap:q.marketCap,
-        volume:q.regularMarketVolume, pe:q.trailingPE
-      };
-    });
-    res.json(result);
+
+    // Fetch all in parallel using chart API (which works!)
+    const results = await Promise.all(ids.map(async id => {
+      try {
+        const sym = encodeURIComponent(SYMBOL_MAP[id]||id);
+        const path = `/v8/finance/chart/${sym}?range=5d&interval=1d&includePrePost=false&formatted=false`;
+        const data = await fetchYahoo(path);
+        const r = data?.chart?.result?.[0];
+        if (!r) return {id, error:true};
+
+        const meta = r.meta || {};
+        const q = r.indicators?.quote?.[0] || {};
+        const ts = r.timestamp || [];
+        const lastIdx = ts.length - 1;
+
+        // Get last close as current price
+        const closes = q.close || [];
+        const opens  = q.open  || [];
+        const highs  = q.high  || [];
+        const lows   = q.low   || [];
+        const vols   = q.volume|| [];
+
+        const price    = meta.regularMarketPrice || closes[lastIdx];
+        const prevClose= meta.previousClose || meta.chartPreviousClose || closes[lastIdx-1];
+        const change   = price && prevClose ? price - prevClose : null;
+        const changePct= change && prevClose ? (change/prevClose)*100 : null;
+
+        return {
+          id,
+          price,
+          change,
+          changePct,
+          dayHigh:     meta.regularMarketDayHigh  || highs[lastIdx],
+          dayLow:      meta.regularMarketDayLow   || lows[lastIdx],
+          fiftyTwoWkH: meta.fiftyTwoWeekHigh,
+          fiftyTwoWkL: meta.fiftyTwoWeekLow,
+          prevClose,
+          open:        meta.regularMarketOpen     || opens[lastIdx],
+          volume:      meta.regularMarketVolume   || vols[lastIdx],
+          mktCap:      meta.marketCap,
+          pe:          null,
+        };
+      } catch(e) {
+        console.error(`Error fetching ${id}:`, e.message);
+        return {id, error:true};
+      }
+    }));
+
+    res.json(results);
   } catch(e) {
     console.error('Quotes error:', e.message);
     res.status(500).json({error: e.message});
   }
 });
 
+// ── /chart — same working approach
 app.get('/chart', async (req, res) => {
   try {
     const {id, range='1d', interval='15m'} = req.query;
@@ -115,6 +143,6 @@ app.get('/chart', async (req, res) => {
   }
 });
 
-app.get('/', (req, res) => res.json({status:'ok', version:'2.2'}));
+app.get('/', (req, res) => res.json({status:'ok', version:'2.4'}));
 const PORT = process.env.PORT||3001;
-app.listen(PORT, ()=>console.log(`Proxy v2.2 on port ${PORT}`));
+app.listen(PORT, ()=>console.log(`Proxy v2.4 on port ${PORT}`));

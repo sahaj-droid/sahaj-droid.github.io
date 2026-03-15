@@ -1,51 +1,30 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MarketTracker Pro</title>
-    <style>
-        :root { --bg: #0f172a; --card: #1e293b; --text: #f8fafc; --accent: #38bdf8; }
-        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); padding: 15px; margin: 0; }
-        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 10px; }
-        .live-dot { height: 10px; width: 10px; background-color: #22c55e; border-radius: 50%; display: inline-block; animation: blink 1.5s infinite; }
-        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
-        .news-box { background: var(--card); border-radius: 12px; padding: 15px; margin-top: 20px; border-left: 4px solid var(--accent); }
-        .news-item { padding: 8px 0; border-bottom: 1px solid #334155; }
-        .news-title { color: var(--accent); text-decoration: none; font-size: 14px; font-weight: 500; }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h3>MarketTracker <span style="font-size: 10px; color: #94a3b8;">v2.0</span></h3>
-        <div style="font-size: 12px;"><span class="live-dot"></span> LIVE</div>
-    </div>
+<script>
+    // AA LINK DHAYN THI CHECK KARO - NO SLASH AT END
+    const API_URL = "https://market-proxy-dop7.onrender.com"; 
 
-    <div id="prices" style="margin-top: 15px;">Live prices showing here...</div>
+    async function updateData() {
+        try {
+            // Fetch Prices
+            const stockRes = await fetch(`${API_URL}/stock/AAPL`);
+            const stockData = await stockRes.json();
+            document.getElementById('prices').innerText = "AAPL: $" + stockData.chart.result[0].meta.regularMarketPrice;
 
-    <div class="news-box">
-        <h4 style="margin: 0 0 10px 0;">📰 Top Stories</h4>
-        <div id="news-list">Loading news...</div>
-    </div>
-
-    <script>
-        const API_URL = "https://market-proxy-dop7.onrender.com"; // Tamara Render URL
-
-        async function getNews() {
-            try {
-                const res = await fetch(`${API_URL}/news`);
-                const news = await res.json();
-                document.getElementById('news-list').innerHTML = news.map(n => `
-                    <div class="news-item">
-                        <a href="${n.link}" target="_blank" class="news-title">${n.title}</a>
-                        <div style="font-size: 10px; color: #64748b;">${n.source}</div>
+            // Fetch News
+            const newsRes = await fetch(`${API_URL}/news`);
+            const newsData = await newsRes.json();
+            if(newsData.length > 0) {
+                document.getElementById('news-list').innerHTML = newsData.map(n => `
+                    <div style="margin-bottom:10px;">
+                        <a href="${n.link}" target="_blank" style="color:#38bdf8; text-decoration:none;">${n.title}</a>
+                        <div style="font-size:10px; color:#94a3b8;">${n.source}</div>
                     </div>
                 `).join('');
-            } catch (e) { document.getElementById('news-list').innerText = "Update error."; }
+            }
+        } catch (e) {
+            console.error(e);
+            document.getElementById('news-list').innerText = "Connection Error.";
         }
-
-        getNews();
-        setInterval(getNews, 300000); // 5 minute update
-    </script>
-</body>
-</html>
+    }
+    updateData();
+    setInterval(updateData, 60000);
+</script>

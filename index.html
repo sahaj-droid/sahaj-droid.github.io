@@ -778,7 +778,7 @@ function DetailModal({item, p, onClose, isIndex, proxyUrl}) {
     setChartError(null);
     try {
       const r = RANGES.find(x=>x.range===range);
-      const base = localStorage.getItem('proxyUrl')||'http://localhost:3001';
+      const base = localStorage.getItem('proxyUrl')||'https://market-proxy-dop7.onrender.com';
       const res = await fetch(`${base}/chart?id=${item.id}&range=${r.range}&interval=${r.interval}`);
       if (!res.ok) throw new Error('Server error');
       const data = await res.json();
@@ -1166,7 +1166,7 @@ function App() {
   const [passcodeEnabled, setPasscodeEnabled] = useState(() => !!localStorage.getItem('passcode'));
   const [passcode, setPasscode] = useState(() => localStorage.getItem('passcode')||'1234');
   const [locked, setLocked] = useState(() => !!localStorage.getItem('passcode'));
-  const [proxyUrlInput, setProxyUrlInput] = useState(() => localStorage.getItem('proxyUrl')||'http://localhost:3001');
+  const [proxyUrlInput, setProxyUrlInput] = useState(() => localStorage.getItem('proxyUrl')||'https://market-proxy-dop7.onrender.com');
 
   const [indices,   setIndices]   = useState(() => { try{return JSON.parse(localStorage.getItem('indices'))||INDICES_META.slice(0,5)}catch{return INDICES_META.slice(0,5)} });
   const [watchlist, setWatchlist] = useState(() => { try{return JSON.parse(localStorage.getItem('watchlist'))||[STOCKS_META[0],STOCKS_META[3],STOCKS_META[4],STOCKS_META[5]]}catch{return [STOCKS_META[0],STOCKS_META[3],STOCKS_META[4],STOCKS_META[5]]} });

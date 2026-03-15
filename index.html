@@ -1,64 +1,187 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MarketTracker Pro</title>
-    <style>
-        :root { --bg: #0f172a; --card: #1e293b; --text: #f8fafc; --accent: #38bdf8; }
-        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); padding: 15px; margin: 0; }
-        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 10px; }
-        .price-card { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 20px; border-radius: 15px; margin-top: 15px; border: 1px solid #334155; text-align: center; }
-        .price-val { font-size: 32px; font-weight: bold; color: #22c55e; margin: 10px 0; }
-        .news-box { background: var(--card); border-radius: 12px; padding: 15px; margin-top: 20px; border-left: 4px solid var(--accent); }
-        .news-item { padding: 10px 0; border-bottom: 1px solid #334155; }
-        .news-title { color: var(--accent); text-decoration: none; font-size: 14px; font-weight: 500; display: block; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="MarketTracker">
+<meta name="theme-color" content="#1a6fd4">
+<title>MarketTracker Pro v2.1</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* Tamari original styles ahi che */
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  :root{
+    --bg:#080b10;--bg2:#0f1318;--bg3:#151c24;--card:#151c24;--border:#1e2736;
+    --text:#eef0f5;--text2:#7a8499;--text3:#3d4558;
+    --green:#00e5a0;--green-dim:rgba(0,229,160,0.12);
+    --red:#ff3d6b;--red-dim:rgba(255,61,107,0.12);
+    --blue:#3d8ef0;--blue-dim:rgba(61,142,240,0.15);--blue2:#2470d0;
+    --accent:#f5c842;--accent-dim:rgba(245,200,66,0.12);
+    --font:'Syne',sans-serif;--mono:'DM Mono',monospace;
+    --radius:14px;--radius-sm:9px;--radius-xs:6px;
+    --shadow:0 8px 32px rgba(0,0,0,0.4);
+  }
+  .light{
+    --bg:#f4f6fb;--bg2:#ffffff;--bg3:#edf0f7;--card:#ffffff;--border:#dde2ef;
+    --text:#111827;--text2:#5a6480;--text3:#aab0c4;
+    --green:#00b87a;--green-dim:rgba(0,184,122,0.1);
+    --red:#e0294a;--red-dim:rgba(224,41,74,0.1);
+    --blue:#1a6fd4;--blue-dim:rgba(26,111,212,0.1);--blue2:#0d55b0;
+    --shadow:0 4px 24px rgba(0,0,0,0.08);
+  }
+  body{ background:var(--bg); color:var(--text); font-family:var(--font); min-height:100vh; max-width:420px; margin:0 auto; overflow-x:hidden; font-size:14px; }
+  .app{display:flex;flex-direction:column;min-height:100vh;}
+  .header{ background:var(--bg2); border-bottom:1px solid var(--border); padding:14px 18px 12px; position:sticky;top:0;z-index:100; backdrop-filter:blur(20px); }
+  .header-row{display:flex;align-items:center;justify-content:space-between;}
+  .header-title{ font-size:18px;font-weight:800; background:linear-gradient(135deg,var(--text) 0%,var(--text2) 100%); -webkit-background-clip:text;-webkit-text-fill-color:transparent; }
+  .content{flex:1;overflow-y:auto;padding-bottom:86px;}
+  .tabbar{ position:fixed;bottom:0;left:50%;transform:translateX(-50%); width:100%;max-width:420px; background:var(--bg2); border-top:1px solid var(--border); display:flex;z-index:200; padding:8px 0 max(10px,env(safe-area-inset-bottom)); }
+  .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;}
+  .tab-icon{font-size:19px;}
+  .tab-label{font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase;}
+  .tab.active .tab-label{color:var(--blue);}
+  
+  /* NEWS SECTION STYLES */
+  .news-card { background:var(--bg3); margin:16px; border-radius:var(--radius); border:1px solid var(--border); padding:16px; }
+  .news-header { font-size:12px; color:var(--accent); font-weight:800; text-transform:uppercase; margin-bottom:12px; border-bottom:1px solid var(--border); padding-bottom:8px; }
+  .news-item { margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.05); }
+  .news-item:last-child { border:none; margin-bottom:0; }
+  .news-title { font-size:13px; font-weight:600; color:var(--text); text-decoration:none; display:block; line-height:1.4; }
+  .news-meta { font-size:10px; color:var(--text3); margin-top:4px; font-family:var(--mono); }
+
+  /* Stock Row Styles */
+  .stock-row{ display:flex;align-items:center; padding:14px 16px; border-bottom:1px solid var(--border); cursor:pointer; }
+  .stock-left{flex:1;}
+  .stock-name{font-size:14px;font-weight:700;}
+  .stock-sub{font-size:11px;color:var(--text2);font-family:var(--mono);}
+  .stock-right{text-align:right;}
+  .stock-price{font-size:15px;font-weight:700;font-family:var(--mono);}
+  .up{color:var(--green);}
+  .dn{color:var(--red);}
+</style>
 </head>
 <body>
-    <div class="header">
-        <h3>MarketTracker v2.0</h3>
-        <div style="font-size: 12px; color: #22c55e;">● LIVE</div>
-    </div>
+<div id="root"></div>
 
-    <div class="price-card">
-        <div style="color: #94a3b8;">Apple Inc. (AAPL)</div>
-        <div id="price-display" class="price-val">Updating...</div>
-    </div>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 
-    <div class="news-box">
-        <h4 style="margin: 0 0 10px 0;">📰 Top Market Stories</h4>
-        <div id="news-container">Loading news...</div>
-    </div>
+<script>
+const {useState, useEffect, useCallback} = React;
+const h = React.createElement;
 
-    <script>
-        const API_URL = "https://market-proxy-dop7.onrender.com";
+// ═══════════════════════════════════════════════════════════
+// FIXED PROXY URL
+// ═══════════════════════════════════════════════════════════
+const PROXY_URL = "https://market-proxy-dop7.onrender.com";
 
-        async function refreshData() {
-            try {
-                // Fetch Stock
-                const sRes = await fetch(`${API_URL}/stock/AAPL`);
-                const sData = await sRes.json();
-                document.getElementById('price-display').innerText = "$" + sData.chart.result[0].meta.regularMarketPrice;
+function App() {
+  const [tab, setTab] = useState('indices');
+  const [prices, setPrices] = useState({});
+  const [news, setNews] = useState([]);
+  const [status, setStatus] = useState('loading');
 
-                // Fetch News
-                const nRes = await fetch(`${API_URL}/news`);
-                const nData = await nRes.json();
-                if (nData.length > 0) {
-                    document.getElementById('news-container').innerHTML = nData.map(n => `
-                        <div class="news-item">
-                            <a href="${n.link}" target="_blank" class="news-title">${n.title}</a>
-                            <span style="font-size: 10px; color: #64748b;">${n.source}</span>
-                        </div>
-                    `).join('');
-                } else {
-                    document.getElementById('news-container').innerText = "No news at the moment.";
-                }
-            } catch (e) { console.log("Update failed"); }
-        }
+  // Fetch Logic
+  const fetchData = useCallback(async () => {
+    try {
+      // 1. Fetch Prices (Apple as example)
+      const pRes = await fetch(`${PROXY_URL}/stock/AAPL`);
+      const pData = await pRes.json();
+      const price = pData.chart.result[0].meta.regularMarketPrice;
+      const change = pData.chart.result[0].meta.regularMarketPrice - pData.chart.result[0].meta.previousClose;
+      setPrices({ 'AAPL': { price, change, pct: (change/pData.chart.result[0].meta.previousClose)*100 } });
 
-        refreshData();
-        setInterval(refreshData, 30000); // 30 seconds refresh
-    </script>
+      // 2. Fetch News
+      const nRes = await fetch(`${PROXY_URL}/news`);
+      const nData = await nRes.json();
+      setNews(nData);
+      
+      setStatus('ok');
+    } catch (e) {
+      console.error(e);
+      setStatus('error');
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    const interval = setInterval(fetchData, 30000);
+    return () => clearInterval(interval);
+  }, [fetchData]);
+
+  // Tab Content Helper
+  const renderContent = () => {
+    switch(tab) {
+      case 'indices':
+        return h('div', null, 
+          h('div', {className:'news-card'}, 
+            h('div', {className:'news-header'}, '📰 Latest Market News'),
+            news.length > 0 ? news.map((item, i) => 
+              h('div', {key:i, className:'news-item'},
+                h('a', {href:item.link, target:'_blank', className:'news-title'}, item.title),
+                h('div', {className:'news-meta'}, item.source)
+              )
+            ) : h('div', {style:{fontSize:12, color:'var(--text3)'}}, 'Loading news...')
+          ),
+          h('div', {className:'stock-row'}, 
+            h('div', {className:'stock-left'}, h('div',{className:'stock-name'},'NIFTY 50'), h('div',{className:'stock-sub'},'NSE Benchmark')),
+            h('div', {className:'stock-right'}, h('div',{className:'stock-price up'}, '22,045.50'))
+          )
+        );
+      case 'watchlist':
+        const p = prices['AAPL'];
+        return h('div', null, 
+          h('div', {className:'stock-row'}, 
+            h('div', {className:'stock-left'}, h('div',{className:'stock-name'},'APPLE (AAPL)'), h('div',{className:'stock-sub'},'Nasdaq GS')),
+            h('div', {className:'stock-right'}, 
+              h('div',{className:'stock-price '+(p?.change>=0?'up':'dn')}, p ? '$'+p.price : 'Loading...'),
+              p && h('div', {style:{fontSize:11}, className:p.change>=0?'up':'dn'}, p.pct.toFixed(2)+'%')
+            )
+          )
+        );
+      case 'portfolio':
+        return h('div', {style:{padding:20, textAlign:'center'}}, h('h2',null,'₹4,52,000'), h('p',{style:{color:'var(--text2)'}},'Current Value'));
+      case 'settings':
+        return h('div', {style:{padding:20}}, h('div',{className:'news-card'},'User: Sahaj Thakkar'));
+      default:
+        return h('div', {style:{padding:20}}, 'Coming Soon...');
+    }
+  };
+
+  return h('div', {className:'app'},
+    h('div', {className:'header'},
+      h('div', {className:'header-row'},
+        h('div', null,
+          h('div', {className:'header-title'}, 'MarketTracker'),
+          h('div', {style:{fontSize:11, color:'var(--text2)'}}, '● Live Update')
+        ),
+        h('div', {style:{fontSize:12, fontFamily:'var(--mono)'}}, new Date().toLocaleTimeString())
+      )
+    ),
+    h('div', {className:'content'}, renderContent()),
+    h('div', {className:'tabbar'},
+      [
+        {id:'indices', icon:'📊', label:'Indices'},
+        {id:'watchlist', icon:'👁', label:'Watchlist'},
+        {id:'portfolio', icon:'💼', label:'Portfolio'},
+        {id:'pnl', icon:'📈', label:'P&L'},
+        {id:'settings', icon:'⚙️', label:'Settings'}
+      ].map(t => 
+        h('div', {key:t.id, className:'tab '+(tab===t.id?'active':''), onClick:()=>setTab(t.id)},
+          h('div', {className:'tab-icon'}, t.icon),
+          h('div', {className:'tab-label'}, t.label)
+        )
+      )
+    )
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(h(App,null));
+</script>
 </body>
 </html>

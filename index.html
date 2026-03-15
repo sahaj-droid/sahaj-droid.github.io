@@ -3,70 +3,62 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MarketTracker Debug</title>
+    <title>MarketTracker Pro</title>
     <style>
-        body { background: #0f172a; color: white; font-family: sans-serif; padding: 20px; }
-        .status-card { background: #1e293b; padding: 15px; border-radius: 10px; margin-bottom: 10px; border-left: 5px solid #38bdf8; }
-        .error-log { background: #450a0a; color: #fca5a5; padding: 10px; border-radius: 5px; font-size: 12px; margin-top: 10px; display: none; white-space: pre-wrap; }
+        :root { --bg: #0f172a; --card: #1e293b; --text: #f8fafc; --accent: #38bdf8; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); padding: 15px; margin: 0; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 10px; }
+        .price-card { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 20px; border-radius: 15px; margin-top: 15px; border: 1px solid #334155; text-align: center; }
+        .price-val { font-size: 32px; font-weight: bold; color: #22c55e; margin: 10px 0; }
+        .news-box { background: var(--card); border-radius: 12px; padding: 15px; margin-top: 20px; border-left: 4px solid var(--accent); }
+        .news-item { padding: 10px 0; border-bottom: 1px solid #334155; }
+        .news-title { color: var(--accent); text-decoration: none; font-size: 14px; font-weight: 500; display: block; }
     </style>
 </head>
 <body>
-    <h3>MarketTracker v2.0 - Debug Mode</h3>
-    <div id="debug-status" style="font-size: 12px; color: #94a3b8;">Initialising...</div>
-
-    <div class="status-card">
-        <strong>Price:</strong> <span id="price-val">Waiting...</span>
+    <div class="header">
+        <h3>MarketTracker v2.0</h3>
+        <div style="font-size: 12px; color: #22c55e;">● LIVE</div>
     </div>
 
-    <div class="status-card">
-        <strong>News:</strong>
-        <div id="news-val" style="font-size: 14px; margin-top: 10px;">Waiting...</div>
+    <div class="price-card">
+        <div style="color: #94a3b8;">Apple Inc. (AAPL)</div>
+        <div id="price-display" class="price-val">Updating...</div>
     </div>
 
-    <div id="error-box" class="error-log"><strong>Logs:</strong><br></div>
+    <div class="news-box">
+        <h4 style="margin: 0 0 10px 0;">📰 Top Market Stories</h4>
+        <div id="news-container">Loading news...</div>
+    </div>
 
     <script>
-        const PROXY_URL = "https://market-proxy-dop7.onrender.com";
+        const API_URL = "https://market-proxy-dop7.onrender.com";
 
-        function logError(msg) {
-            const box = document.getElementById('error-box');
-            box.style.display = 'block';
-            box.innerHTML += "<div>> " + msg + "</div>";
-        }
-
-        async function startApp() {
-            document.getElementById('debug-status').innerText = "Connecting to: " + PROXY_URL;
-            
+        async function refreshData() {
             try {
-                logError("Fetching Stock...");
-                const sRes = await fetch(`${PROXY_URL}/stock/AAPL`);
-                if (!sRes.ok) throw new Error("Stock API Error: " + sRes.status);
+                // Fetch Stock
+                const sRes = await fetch(`${API_URL}/stock/AAPL`);
                 const sData = await sRes.json();
-                document.getElementById('price-val').innerText = "AAPL: $" + sData.chart.result[0].meta.regularMarketPrice;
+                document.getElementById('price-display').innerText = "$" + sData.chart.result[0].meta.regularMarketPrice;
 
-                logError("Fetching News...");
-                const nRes = await fetch(`${PROXY_URL}/news`);
-                if (!nRes.ok) throw new Error("News API Error: " + nRes.status);
+                // Fetch News
+                const nRes = await fetch(`${API_URL}/news`);
                 const nData = await nRes.json();
-                
                 if (nData.length > 0) {
-                    document.getElementById('news-val').innerHTML = nData.map(n => 
-                        `<div style="margin-bottom:8px;">• <a href="${n.link}" style="color:#38bdf8">${n.title}</a></div>`
-                    ).join('');
+                    document.getElementById('news-container').innerHTML = nData.map(n => `
+                        <div class="news-item">
+                            <a href="${n.link}" target="_blank" class="news-title">${n.title}</a>
+                            <span style="font-size: 10px; color: #64748b;">${n.source}</span>
+                        </div>
+                    `).join('');
                 } else {
-                    document.getElementById('news-val').innerText = "No news found.";
+                    document.getElementById('news-container').innerText = "No news at the moment.";
                 }
-
-                document.getElementById('debug-status').innerText = "All systems online! ✅";
-
-            } catch (err) {
-                logError("CRITICAL: " + err.message);
-                document.getElementById('debug-status').innerText = "System Failure ❌";
-            }
+            } catch (e) { console.log("Update failed"); }
         }
 
-        // Render ne jagva mate 2 second ni raah jovo
-        setTimeout(startApp, 2000);
+        refreshData();
+        setInterval(refreshData, 30000); // 30 seconds refresh
     </script>
 </body>
 </html>

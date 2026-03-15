@@ -2,8 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="MarketTracker">
+<meta name="theme-color" content="#1a6fd4">
 <title>MarketTracker</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
@@ -471,14 +478,9 @@ const {useState,useEffect,useRef,useCallback}=React;
 const h=React.createElement;
 
 // ═══════════════════════════════════════════════════════════
-// CONFIG
+// CONFIG — After deploying backend, replace with your URL
 // ═══════════════════════════════════════════════════════════
-const DEFAULT_PROXY = 'https://market-proxy-dop7.onrender.com';
-// Force-set localStorage on every load if empty (APK WebView fix)
-if (!localStorage.getItem('proxyUrl')) {
-  localStorage.setItem('proxyUrl', DEFAULT_PROXY);
-}
-const PROXY_URL = localStorage.getItem('proxyUrl') || DEFAULT_PROXY;
+const PROXY_URL = 'https://market-proxy-dop7.onrender.com';
 const REFRESH_INTERVAL = 30; // seconds
 
 // ═══════════════════════════════════════════════════════════
@@ -531,26 +533,12 @@ function useLivePrices(ids) {
   const timerRef = useRef(null);
   const countRef = useRef(null);
 
-  // Wake proxy if sleeping (Render free tier cold start)
-  const wakeProxy = useCallback(async (base) => {
-    try {
-      const controller = new AbortController();
-      const t = setTimeout(() => controller.abort(), 60000);
-      await fetch(`${base}/`, {signal: controller.signal});
-      clearTimeout(t);
-    } catch(e) { /* ignore */ }
-  }, []);
-
-  const fetchPrices = useCallback(async (url, attempt) => {
+  const fetchPrices = useCallback(async (url) => {
     if (!ids.length) return;
     const base = url || proxyUrl;
-    const tryNum = attempt || 1;
     setStatus('loading');
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 40000);
-      const res = await fetch(`${base}/quotes?ids=${ids.join(',')}`, {signal: controller.signal});
-      clearTimeout(timeout);
+      const res = await fetch(`${base}/quotes?ids=${ids.join(',')}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const map = {};
@@ -560,12 +548,6 @@ function useLivePrices(ids) {
       setLastUpdated(new Date());
       setCountdown(REFRESH_INTERVAL);
     } catch(e) {
-      if (tryNum < 2) {
-        // Cold start — wake proxy then retry once
-        await wakeProxy(base);
-        setTimeout(() => fetchPrices(url, 2), 2000);
-        return;
-      }
       setStatus('error');
     }
   }, [ids.join(','), proxyUrl]);
@@ -782,59 +764,27 @@ function DetailModal({item, p, onClose, isIndex, proxyUrl}) {
   const [chartData, setChartData] = useState(null);
   const [chartLoading, setChartLoading] = useState(false);
   const [chartError, setChartError] = useState(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  useEffect(() => {
-    function onFsChange() {
-      const active = !!(document.fullscreenElement || document.webkitFullscreenElement);
-      setIsFullscreen(active);
-    }
-    document.addEventListener('fullscreenchange', onFsChange);
-    document.addEventListener('webkitfullscreenchange', onFsChange);
-    return () => {
-      document.removeEventListener('fullscreenchange', onFsChange);
-      document.removeEventListener('webkitfullscreenchange', onFsChange);
-    };
-  }, []);
 
   const RANGES = [
-    {label:'1D',  range:'1d',  interval:'15m'},
-    {label:'5D',  range:'5d',  interval:'15m'},
-    {label:'1M',  range:'1mo', interval:'1d'},
-    {label:'6M',  range:'6mo', interval:'1wk'},
-    {label:'1Y',  range:'1y',  interval:'1mo'},
+    {label:'15m', range:'1d',  interval:'15m'},
+    {label:'1D',  range:'5d',  interval:'1d'},
+    {label:'1W',  range:'1mo', interval:'1wk'},
+    {label:'1M',  range:'6mo', interval:'1mo'},
   ];
 
-  const [retryCount, setRetryCount] = useState(0);
-
-  async function loadChart(rangeVal, attempt) {
-    const tryNum = attempt || 1;
-    setChartRange(rangeVal);
+  async function loadChart(range) {
+    setChartRange(range);
     setChartLoading(true);
     setChartError(null);
-    if (tryNum === 1) setChartData(null);
     try {
-      const r = RANGES.find(x=>x.range===rangeVal) || RANGES[0];
-      const base = localStorage.getItem('proxyUrl') || DEFAULT_PROXY;
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 35000);
-      const res = await fetch(`${base}/chart?id=${item.id}&range=${r.range}&interval=${r.interval}`, {signal: controller.signal});
-      clearTimeout(timeout);
-      if (!res.ok) throw new Error('HTTP '+res.status);
+      const r = RANGES.find(x=>x.range===range);
+      const base = localStorage.getItem('proxyUrl')||'https://market-proxy-dop7.onrender.com';
+      const res = await fetch(`${base}/chart?id=${item.id}&range=${r.range}&interval=${r.interval}`);
+      if (!res.ok) throw new Error('Server error');
       const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      if (!data.candles || data.candles.length === 0) throw new Error('No candles');
       setChartData(data);
-      setRetryCount(0);
     } catch(e) {
-      if (tryNum < 2) {
-        setRetryCount(1);
-        setTimeout(() => loadChart(rangeVal, 2), 3000);
-        return;
-      }
-      setChartError(e.name === 'AbortError'
-        ? '⏱ Timeout — Proxy cold start thay che. Retry dabao.'
-        : '⚠ Chart load nahi thayo. Retry dabao.');
-      setRetryCount(0);
+      setChartError('Chart load nahi thayo');
     }
     setChartLoading(false);
   }
@@ -902,25 +852,11 @@ function DetailModal({item, p, onClose, isIndex, proxyUrl}) {
     ['SECTOR',     item.sector||'—', '', 'P/E', p?.pe ? p.pe.toFixed(1)+'x' : '—', ''],
   ];
 
-  return h('div', {className:'modal-overlay', style:isFullscreen?{alignItems:'stretch'}:{}, onClick:e=>{if(e.target===e.currentTarget)onClose();}},
-    h('div', {className:'modal', style:isFullscreen?{maxHeight:'100vh',height:'100vh',borderRadius:0}:{}},
+  return h('div', {className:'modal-overlay', onClick:e=>{if(e.target===e.currentTarget)onClose();}},
+    h('div', {className:'modal'},
       h('div', {className:'modal-handle'}),
       h('div', {className:'modal-header'},
         h('button', {className:'modal-close', onClick:onClose}, '✕'),
-        h('button', {
-          style:{position:'absolute',right:52,top:16,background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--text2)',width:30,height:30,borderRadius:'50%',cursor:'pointer',fontSize:13,display:'flex',alignItems:'center',justifyContent:'center'},
-          onClick:()=>{
-            const el = document.documentElement;
-            if (!isFullscreen) {
-              const req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen;
-              if (req) req.call(el).catch(()=>{});
-            } else {
-              const ex = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen;
-              if (ex) ex.call(document).catch(()=>{});
-            }
-            setIsFullscreen(f=>!f);
-          }
-        }, isFullscreen ? '⊡' : '⛶'),
         h('div', {className:'modal-title'}, item.name),
         h('div', {style:{marginTop:6,display:'flex',alignItems:'baseline',gap:8,flexWrap:'wrap'}},
           h('span', {style:{fontSize:22,fontWeight:800,fontFamily:'var(--mono)'}}, loaded?'₹'+fmt(p.price):'—'),
@@ -958,16 +894,8 @@ function DetailModal({item, p, onClose, isIndex, proxyUrl}) {
             }, r.label)
           )
         ),
-        (chartLoading || retryCount > 0) && h('div', {className:'chart-loading'},
-          retryCount > 0 ? '⟳ Proxy wake karvo padse, retry thay che...' : '⟳ Loading...'
-        ),
-        chartError && h('div', {style:{textAlign:'center',padding:'16px'}},
-          h('div', {style:{color:'var(--red)',fontSize:12,fontFamily:'var(--mono)',marginBottom:10}}, chartError),
-          h('button', {
-            style:{background:'var(--blue-dim)',border:'1px solid var(--blue)',color:'var(--blue)',borderRadius:8,padding:'7px 18px',fontSize:12,cursor:'pointer',fontFamily:'var(--mono)'},
-            onClick:()=>loadChart(chartRange)
-          }, '↺ Retry')
-        ),
+        chartLoading && h('div', {className:'chart-loading'}, '⟳ Loading...'),
+        chartError && h('div', {className:'chart-loading', style:{color:'var(--red)'}}, chartError),
         chartData && !chartLoading && h('div', null,
           h('div', {className:'chart-wrap'},
             h('div', {className:'chart-label'}, 'Price'),
@@ -1238,7 +1166,7 @@ function App() {
   const [passcodeEnabled, setPasscodeEnabled] = useState(() => !!localStorage.getItem('passcode'));
   const [passcode, setPasscode] = useState(() => localStorage.getItem('passcode')||'1234');
   const [locked, setLocked] = useState(() => !!localStorage.getItem('passcode'));
-  const [proxyUrlInput, setProxyUrlInput] = useState(() => localStorage.getItem('proxyUrl') || DEFAULT_PROXY);
+  const [proxyUrlInput, setProxyUrlInput] = useState(() => localStorage.getItem('proxyUrl')||'https://market-proxy-dop7.onrender.com');
 
   const [indices,   setIndices]   = useState(() => { try{return JSON.parse(localStorage.getItem('indices'))||INDICES_META.slice(0,5)}catch{return INDICES_META.slice(0,5)} });
   const [watchlist, setWatchlist] = useState(() => { try{return JSON.parse(localStorage.getItem('watchlist'))||[STOCKS_META[0],STOCKS_META[3],STOCKS_META[4],STOCKS_META[5]]}catch{return [STOCKS_META[0],STOCKS_META[3],STOCKS_META[4],STOCKS_META[5]]} });
@@ -1526,12 +1454,6 @@ function App() {
           h('button', {
             style:{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:'var(--radius-xs)',padding:'7px 14px',fontSize:12,cursor:'pointer',fontFamily:'var(--font)',width:'100%'},
             onClick:()=>{
-              // Passcode check pehla
-              if (passcodeEnabled) {
-                const entered = prompt('🔐 Proxy URL change karva passcode enter karo:');
-                if (entered === null) return;
-                if (entered !== passcode) { alert('❌ Wrong passcode'); return; }
-              }
               const newUrl = prompt('Proxy URL enter karo:', proxyUrlInput);
               if (newUrl !== null && newUrl.trim()) {
                 setProxyUrlInput(newUrl.trim());
@@ -1617,7 +1539,7 @@ function App() {
           h('div', {className:'header-title'}, 'MarketTracker'),
           h('div', {className:'header-sub'},
             h('span', {className:'live-dot '+(status==='error'?'error':status==='loading'?'loading':'')}),
-            status==='ok' ? 'Live Data' : status==='error' ? 'Proxy Offline — Tap Refresh' : status==='loading' ? 'Connecting... (30-60s)' : 'Starting...'
+            status==='ok' ? 'Live Data' : status==='error' ? 'Proxy Offline' : status==='loading' ? 'Fetching...' : 'Starting...'
           )
         ),
         h('div', {className:'time-chip'},
@@ -1690,6 +1612,15 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(h(App,null));
+
+// Register Service Worker
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(reg => console.log('SW registered:', reg.scope))
+      .catch(err => console.log('SW error:', err));
+  });
+}
 </script>
 </body>
 </html>

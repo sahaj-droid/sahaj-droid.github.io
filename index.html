@@ -471,9 +471,14 @@ const {useState,useEffect,useRef,useCallback}=React;
 const h=React.createElement;
 
 // ═══════════════════════════════════════════════════════════
-// CONFIG — After deploying backend, replace with your URL
+// CONFIG
 // ═══════════════════════════════════════════════════════════
-const PROXY_URL = localStorage.getItem('proxyUrl') || 'https://market-proxy-dop7.onrender.com';
+const DEFAULT_PROXY = 'https://market-proxy-dop7.onrender.com';
+// Force-set localStorage on every load if empty (APK WebView fix)
+if (!localStorage.getItem('proxyUrl')) {
+  localStorage.setItem('proxyUrl', DEFAULT_PROXY);
+}
+const PROXY_URL = localStorage.getItem('proxyUrl') || DEFAULT_PROXY;
 const REFRESH_INTERVAL = 30; // seconds
 
 // ═══════════════════════════════════════════════════════════
@@ -526,12 +531,26 @@ function useLivePrices(ids) {
   const timerRef = useRef(null);
   const countRef = useRef(null);
 
-  const fetchPrices = useCallback(async (url) => {
+  // Wake proxy if sleeping (Render free tier cold start)
+  const wakeProxy = useCallback(async (base) => {
+    try {
+      const controller = new AbortController();
+      const t = setTimeout(() => controller.abort(), 60000);
+      await fetch(`${base}/`, {signal: controller.signal});
+      clearTimeout(t);
+    } catch(e) { /* ignore */ }
+  }, []);
+
+  const fetchPrices = useCallback(async (url, attempt) => {
     if (!ids.length) return;
     const base = url || proxyUrl;
+    const tryNum = attempt || 1;
     setStatus('loading');
     try {
-      const res = await fetch(`${base}/quotes?ids=${ids.join(',')}`);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 40000);
+      const res = await fetch(`${base}/quotes?ids=${ids.join(',')}`, {signal: controller.signal});
+      clearTimeout(timeout);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const map = {};
@@ -541,6 +560,12 @@ function useLivePrices(ids) {
       setLastUpdated(new Date());
       setCountdown(REFRESH_INTERVAL);
     } catch(e) {
+      if (tryNum < 2) {
+        // Cold start — wake proxy then retry once
+        await wakeProxy(base);
+        setTimeout(() => fetchPrices(url, 2), 2000);
+        return;
+      }
       setStatus('error');
     }
   }, [ids.join(','), proxyUrl]);
@@ -789,7 +814,7 @@ function DetailModal({item, p, onClose, isIndex, proxyUrl}) {
     if (tryNum === 1) setChartData(null);
     try {
       const r = RANGES.find(x=>x.range===rangeVal) || RANGES[0];
-      const base = localStorage.getItem('proxyUrl') || 'https://market-proxy-dop7.onrender.com';
+      const base = localStorage.getItem('proxyUrl') || DEFAULT_PROXY;
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 35000);
       const res = await fetch(`${base}/chart?id=${item.id}&range=${r.range}&interval=${r.interval}`, {signal: controller.signal});
@@ -1213,7 +1238,7 @@ function App() {
   const [passcodeEnabled, setPasscodeEnabled] = useState(() => !!localStorage.getItem('passcode'));
   const [passcode, setPasscode] = useState(() => localStorage.getItem('passcode')||'1234');
   const [locked, setLocked] = useState(() => !!localStorage.getItem('passcode'));
-  const [proxyUrlInput, setProxyUrlInput] = useState(() => localStorage.getItem('proxyUrl')||'https://market-proxy-dop7.onrender.com');
+  const [proxyUrlInput, setProxyUrlInput] = useState(() => localStorage.getItem('proxyUrl') || DEFAULT_PROXY);
 
   const [indices,   setIndices]   = useState(() => { try{return JSON.parse(localStorage.getItem('indices'))||INDICES_META.slice(0,5)}catch{return INDICES_META.slice(0,5)} });
   const [watchlist, setWatchlist] = useState(() => { try{return JSON.parse(localStorage.getItem('watchlist'))||[STOCKS_META[0],STOCKS_META[3],STOCKS_META[4],STOCKS_META[5]]}catch{return [STOCKS_META[0],STOCKS_META[3],STOCKS_META[4],STOCKS_META[5]]} });
@@ -1592,7 +1617,7 @@ function App() {
           h('div', {className:'header-title'}, 'MarketTracker'),
           h('div', {className:'header-sub'},
             h('span', {className:'live-dot '+(status==='error'?'error':status==='loading'?'loading':'')}),
-            status==='ok' ? 'Live Data' : status==='error' ? 'Proxy Offline' : status==='loading' ? 'Fetching...' : 'Starting...'
+            status==='ok' ? 'Live Data' : status==='error' ? 'Proxy Offline — Tap Refresh' : status==='loading' ? 'Connecting... (30-60s)' : 'Starting...'
           )
         ),
         h('div', {className:'time-chip'},

@@ -509,7 +509,8 @@ const h=React.createElement;
 // CONFIG — After deploying backend, replace with your URL
 // ═══════════════════════════════════════════════════════════
 const PROXY_URL = 'https://market-proxy-dop7.onrender.com';
-const REFRESH_INTERVAL = 30; // seconds
+const REFRESH_OPTIONS = [5, 10, 15, 30]; // seconds
+const DEFAULT_REFRESH = 30;
 
 // ═══════════════════════════════════════════════════════════
 // STATIC METADATA
@@ -552,14 +553,18 @@ function fmtCr(n){if(!n)return'—';if(n>=1e12)return'₹'+(n/1e12).toFixed(2)+'
 // ═══════════════════════════════════════════════════════════
 // LIVE PRICE HOOK — Real Yahoo Finance via proxy
 // ═══════════════════════════════════════════════════════════
-function useLivePrices(ids) {
+function useLivePrices(ids, refreshInterval) {
   const [prices, setPrices]   = useState({});
-  const [status, setStatus]   = useState('idle'); // idle | loading | ok | error
+  const [status, setStatus]   = useState('idle');
   const [lastUpdated, setLastUpdated] = useState(null);
-  const [countdown, setCountdown] = useState(REFRESH_INTERVAL);
+  const [countdown, setCountdown] = useState(refreshInterval);
   const [proxyUrl, setProxyUrl] = useState(PROXY_URL);
-  const timerRef = useRef(null);
-  const countRef = useRef(null);
+  const timerRef    = useRef(null);
+  const countRef    = useRef(null);
+  const intervalRef = useRef(refreshInterval);
+
+  // Keep intervalRef in sync so timer callbacks always use latest value
+  useEffect(() => { intervalRef.current = refreshInterval; }, [refreshInterval]);
 
   const fetchPrices = useCallback(async (url) => {
     if (!ids.length) return;
@@ -574,22 +579,25 @@ function useLivePrices(ids) {
       setPrices(prev => ({...prev, ...map}));
       setStatus('ok');
       setLastUpdated(new Date());
-      setCountdown(REFRESH_INTERVAL);
+      setCountdown(intervalRef.current);
     } catch(e) {
       setStatus('error');
     }
   }, [ids.join(','), proxyUrl]);
 
+  // Restart interval whenever refreshInterval or fetchPrices changes
   useEffect(() => {
     fetchPrices();
-    timerRef.current = setInterval(() => fetchPrices(), REFRESH_INTERVAL * 1000);
+    clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => fetchPrices(), refreshInterval * 1000);
+    setCountdown(refreshInterval);
     return () => clearInterval(timerRef.current);
-  }, [fetchPrices]);
+  }, [fetchPrices, refreshInterval]);
 
   // Countdown ticker
   useEffect(() => {
     countRef.current = setInterval(() => {
-      setCountdown(c => c <= 1 ? REFRESH_INTERVAL : c - 1);
+      setCountdown(c => c <= 1 ? intervalRef.current : c - 1);
     }, 1000);
     return () => clearInterval(countRef.current);
   }, []);
@@ -1265,6 +1273,15 @@ function App() {
   const [passcode, setPasscode] = useState(() => localStorage.getItem('passcode')||'1234');
   const [locked, setLocked] = useState(() => !!localStorage.getItem('passcode'));
   const [proxyUrlInput, setProxyUrlInput] = useState(() => localStorage.getItem('proxyUrl')||'https://market-proxy-dop7.onrender.com');
+  const [refreshInterval, setRefreshIntervalState] = useState(() => {
+    const v = parseInt(localStorage.getItem('refreshInterval')||String(DEFAULT_REFRESH));
+    return REFRESH_OPTIONS.includes(v) ? v : DEFAULT_REFRESH;
+  });
+  function changeRefreshInterval(v) {
+    const val = parseInt(v);
+    setRefreshIntervalState(val);
+    localStorage.setItem('refreshInterval', val);
+  }
 
   const [indices,   setIndices]   = useState(() => { try{return JSON.parse(localStorage.getItem('indices'))||INDICES_META.slice(0,5)}catch{return INDICES_META.slice(0,5)} });
   const [watchlist, setWatchlist] = useState(() => { try{return JSON.parse(localStorage.getItem('watchlist'))||[STOCKS_META[0],STOCKS_META[3],STOCKS_META[4],STOCKS_META[5]]}catch{return [STOCKS_META[0],STOCKS_META[3],STOCKS_META[4],STOCKS_META[5]]} });
@@ -1304,7 +1321,7 @@ function App() {
 
   // Collect all IDs to fetch
   const allIds = [...new Set([...indices,...watchlist,...portfolio].map(x=>x.id))];
-  const {prices, status, lastUpdated, countdown, refresh, setProxyUrl} = useLivePrices(allIds);
+  const {prices, status, lastUpdated, countdown, refresh, setProxyUrl} = useLivePrices(allIds, refreshInterval);
 
   function saveProxyUrl() {
     localStorage.setItem('proxyUrl', proxyUrlInput);
@@ -1574,9 +1591,21 @@ function App() {
         h('div', {className:'settings-row'},
           h('div', null,
             h('div',{className:'settings-row-label'},'Auto Refresh'),
-            h('div',{className:'settings-row-sub'},`Every ${REFRESH_INTERVAL} seconds`)
+            h('div',{className:'settings-row-sub'},'Price update interval')
           ),
           h('div', {style:{fontSize:12,color:'var(--green)'}},'● ON')
+        ),
+        h('div', {className:'settings-row', style:{gap:10}},
+          h('div', null, h('div',{className:'settings-row-label'},'Refresh Rate')),
+          h('div', {className:'seg-control'},
+            REFRESH_OPTIONS.map(s =>
+              h('div', {
+                key:s,
+                className:'seg-btn '+(refreshInterval===s?'active':''),
+                onClick:()=>changeRefreshInterval(s)
+              }, s+'s')
+            )
+          )
         )
       ),
       h('div', {className:'settings-section'},

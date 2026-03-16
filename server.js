@@ -70,34 +70,40 @@ app.get('/quotes', async (req, res) => {
     const results = await Promise.all(ids.map(async id => {
       try {
         const sym = encodeURIComponent(SYMBOL_MAP[id]||id);
-        const path = `/v8/finance/chart/${sym}?range=5d&interval=1d&includePrePost=false&formatted=false`;
-        const data = await fetchYahoo(path);
-        const r = data?.chart?.result?.[0];
-        if (!r) return {id, error:true};
+        // Parallel fetch: 1m intraday (accurate prevClose in meta) + 5d daily (hi/lo/vol)
+        const [intradayData, dailyData] = await Promise.all([
+          fetchYahoo(`/v8/finance/chart/${sym}?range=1d&interval=1m&includePrePost=false&formatted=false`),
+          fetchYahoo(`/v8/finance/chart/${sym}?range=5d&interval=1d&includePrePost=false&formatted=false`),
+        ]);
+        const ri = intradayData?.chart?.result?.[0];
+        const rd = dailyData?.chart?.result?.[0];
+        if (!ri && !rd) return {id, error:true};
+        const meta  = (ri||rd).meta || {};
+        const metaD = (rd||ri).meta || {};
+        const qD      = rd?.indicators?.quote?.[0] || {};
+        const closesD = qD.close || [];
+        const opensD  = qD.open  || [];
+        const highsD  = qD.high  || [];
+        const lowsD   = qD.low   || [];
+        const volsD   = qD.volume|| [];
+        const lastIdxD = (rd?.timestamp||[]).length - 1;
+        // chartPreviousClose = exact prev trading day close (Yahoo official field)
+        const prevClose =
+          meta.chartPreviousClose  ||
+          meta.previousClose       ||
+          metaD.chartPreviousClose ||
+          metaD.previousClose      ||
+          (closesD[lastIdxD - 1] ?? null);
+        const price     = meta.regularMarketPrice || closesD[lastIdxD];
+        const change    = (price != null && prevClose) ? price - prevClose : null;
+        const changePct = (change != null && prevClose) ? (change / prevClose) * 100 : null;
 
-        const meta = r.meta || {};
-        const q = r.indicators?.quote?.[0] || {};
-        const ts = r.timestamp || [];
-        const lastIdx = ts.length - 1;
+        const dayHigh = meta.regularMarketDayHigh  || highsD[lastIdxD];
+        const dayLow  = meta.regularMarketDayLow   || lowsD[lastIdxD];
 
-        // Get last close as current price
-        const closes = q.close || [];
-        const opens  = q.open  || [];
-        const highs  = q.high  || [];
-        const lows   = q.low   || [];
-        const vols   = q.volume|| [];
-
-        const price    = meta.regularMarketPrice || closes[lastIdx];
-        const prevClose= meta.previousClose || meta.chartPreviousClose || closes[lastIdx-1];
-        const change   = price && prevClose ? price - prevClose : null;
-        const changePct= change && prevClose ? (change/prevClose)*100 : null;
-
-        const dayHigh = meta.regularMarketDayHigh || highs[lastIdx];
-        const dayLow  = meta.regularMarketDayLow  || lows[lastIdx];
-
-        // High/Low distance from prevClose (for context bars)
-        const highFromPrev = prevClose && dayHigh ? ((dayHigh - prevClose) / prevClose) * 100 : null;
-        const lowFromPrev  = prevClose && dayLow  ? ((dayLow  - prevClose) / prevClose) * 100 : null;
+        // High/Low % distance from prevClose (shown in range bar)
+        const highFromPrev = (prevClose && dayHigh) ? ((dayHigh - prevClose) / prevClose) * 100 : null;
+        const lowFromPrev  = (prevClose && dayLow)  ? ((dayLow  - prevClose) / prevClose) * 100 : null;
 
         return {
           id,
@@ -108,12 +114,12 @@ app.get('/quotes', async (req, res) => {
           dayLow,
           highFromPrev,
           lowFromPrev,
-          fiftyTwoWkH: meta.fiftyTwoWeekHigh,
-          fiftyTwoWkL: meta.fiftyTwoWeekLow,
+          fiftyTwoWkH: meta.fiftyTwoWeekHigh  || metaD.fiftyTwoWeekHigh,
+          fiftyTwoWkL: meta.fiftyTwoWeekLow   || metaD.fiftyTwoWeekLow,
           prevClose,
-          open:        meta.regularMarketOpen || opens[lastIdx],
-          volume:      meta.regularMarketVolume || vols[lastIdx],
-          mktCap:      meta.marketCap,
+          open:        meta.regularMarketOpen   || opensD[lastIdxD],
+          volume:      meta.regularMarketVolume || volsD[lastIdxD],
+          mktCap:      meta.marketCap           || metaD.marketCap,
           pe:          null,
         };
       } catch(e) {

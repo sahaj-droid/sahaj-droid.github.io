@@ -59,81 +59,14 @@ function fetchYahoo(path) {
   });
 }
 
-// ── /lookup — symbol પરથી name + sector fetch કરો
-// Usage: /lookup?sym=RELIANCE&exchange=NSE
-app.get('/lookup', async (req, res) => {
-  try {
-    const { sym, exchange = 'NSE' } = req.query;
-    if (!sym) return res.status(400).json({ error: 'sym required' });
-
-    // Yahoo suffix: NSE → .NS, BSE → .BO
-    const suffix = exchange.toUpperCase().includes('BSE') ? '.BO' : '.NS';
-    const yahooSym = encodeURIComponent(sym.toUpperCase() + suffix);
-    const path = `/v8/finance/chart/${yahooSym}?range=1d&interval=1d&includePrePost=false&formatted=false`;
-
-    const data = await fetchYahoo(path);
-    const meta = data?.chart?.result?.[0]?.meta;
-
-    if (!meta) return res.json({ sym, name: sym, sector: '', exchange });
-
-    // Yahoo meta માં longName અથવા shortName હોય
-    const name   = meta.longName || meta.shortName || sym;
-    // sector Yahoo chart API માં નથી આવતું — blank રાખો
-    const sector = '';
-
-    res.json({ sym: sym.toUpperCase(), name, sector, exchange });
-  } catch (e) {
-    console.error('Lookup error:', e.message);
-    // Error હોય તો sym જ name તરીકે return
-    res.json({ sym: req.query.sym, name: req.query.sym, sector: '', exchange: req.query.exchange || 'NSE' });
-  }
-});
-
-// ── /lookup-batch — multiple symbols એક સાથે
-// Usage: /lookup-batch?syms=RELIANCE,ADANIPORTS,TATAPOWER&exchange=NSE
-app.get('/lookup-batch', async (req, res) => {
-  try {
-    const { syms = '', exchange = 'NSE' } = req.query;
-    const symList = syms.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
-    if (!symList.length) return res.json([]);
-
-    const suffix = exchange.toUpperCase().includes('BSE') ? '.BO' : '.NS';
-
-    // Parallel fetch — max 10 at a time to avoid rate limit
-    const BATCH = 10;
-    const results = [];
-    for (let i = 0; i < symList.length; i += BATCH) {
-      const batch = symList.slice(i, i + BATCH);
-      const batchResults = await Promise.all(batch.map(async sym => {
-        try {
-          const yahooSym = encodeURIComponent(sym + suffix);
-          const path = `/v8/finance/chart/${yahooSym}?range=1d&interval=1d&includePrePost=false&formatted=false`;
-          const data = await fetchYahoo(path);
-          const meta = data?.chart?.result?.[0]?.meta;
-          const name = meta?.longName || meta?.shortName || sym;
-          return { sym, name, sector: '', exchange };
-        } catch {
-          return { sym, name: sym, sector: '', exchange };
-        }
-      }));
-      results.push(...batchResults);
-      // Rate limit માટે થોડો delay
-      if (i + BATCH < symList.length) await new Promise(r => setTimeout(r, 300));
-    }
-
-    res.json(results);
-  } catch (e) {
-    console.error('Lookup-batch error:', e.message);
-    res.status(500).json({ error: e.message });
-  }
-});
-
 // ── /quotes — use v8/chart with interval=1d to get current price + meta
+// Chart API works, v7/quote API blocks. So we fetch each symbol via chart API.
 app.get('/quotes', async (req, res) => {
   try {
     const ids = (req.query.ids||'').split(',').filter(Boolean);
     if (!ids.length) return res.json([]);
 
+    // Fetch all in parallel using chart API (which works!)
     const results = await Promise.all(ids.map(async id => {
       try {
         const sym = encodeURIComponent(SYMBOL_MAP[id]||id);
@@ -147,6 +80,7 @@ app.get('/quotes', async (req, res) => {
         const ts = r.timestamp || [];
         const lastIdx = ts.length - 1;
 
+        // Get last close as current price
         const closes = q.close || [];
         const opens  = q.open  || [];
         const highs  = q.high  || [];
@@ -186,7 +120,7 @@ app.get('/quotes', async (req, res) => {
   }
 });
 
-// ── /chart
+// ── /chart — same working approach
 app.get('/chart', async (req, res) => {
   try {
     const {id, range='1d', interval='15m'} = req.query;
@@ -209,6 +143,6 @@ app.get('/chart', async (req, res) => {
   }
 });
 
-app.get('/', (req, res) => res.json({status:'ok', version:'2.5'}));
+app.get('/', (req, res) => res.json({status:'ok', version:'2.4'}));
 const PORT = process.env.PORT||3001;
-app.listen(PORT, ()=>console.log(`Proxy v2.5 on port ${PORT}`));
+app.listen(PORT, ()=>console.log(`Proxy v2.4 on port ${PORT}`));

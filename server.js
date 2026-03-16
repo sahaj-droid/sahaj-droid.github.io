@@ -59,67 +59,118 @@ function fetchYahoo(path) {
   });
 }
 
+// ── /lookup — symbol પરથી name + sector fetch કરો
+// Usage: /lookup?sym=RELIANCE&exchange=NSE
+app.get('/lookup', async (req, res) => {
+  try {
+    const { sym, exchange = 'NSE' } = req.query;
+    if (!sym) return res.status(400).json({ error: 'sym required' });
+
+    // Yahoo suffix: NSE → .NS, BSE → .BO
+    const suffix = exchange.toUpperCase().includes('BSE') ? '.BO' : '.NS';
+    const yahooSym = encodeURIComponent(sym.toUpperCase() + suffix);
+    const path = `/v8/finance/chart/${yahooSym}?range=1d&interval=1d&includePrePost=false&formatted=false`;
+
+    const data = await fetchYahoo(path);
+    const meta = data?.chart?.result?.[0]?.meta;
+
+    if (!meta) return res.json({ sym, name: sym, sector: '', exchange });
+
+    // Yahoo meta માં longName અથવા shortName હોય
+    const name   = meta.longName || meta.shortName || sym;
+    // sector Yahoo chart API માં નથી આવતું — blank રાખો
+    const sector = '';
+
+    res.json({ sym: sym.toUpperCase(), name, sector, exchange });
+  } catch (e) {
+    console.error('Lookup error:', e.message);
+    // Error હોય તો sym જ name તરીકે return
+    res.json({ sym: req.query.sym, name: req.query.sym, sector: '', exchange: req.query.exchange || 'NSE' });
+  }
+});
+
+// ── /lookup-batch — multiple symbols એક સાથે
+// Usage: /lookup-batch?syms=RELIANCE,ADANIPORTS,TATAPOWER&exchange=NSE
+app.get('/lookup-batch', async (req, res) => {
+  try {
+    const { syms = '', exchange = 'NSE' } = req.query;
+    const symList = syms.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+    if (!symList.length) return res.json([]);
+
+    const suffix = exchange.toUpperCase().includes('BSE') ? '.BO' : '.NS';
+
+    // Parallel fetch — max 10 at a time to avoid rate limit
+    const BATCH = 10;
+    const results = [];
+    for (let i = 0; i < symList.length; i += BATCH) {
+      const batch = symList.slice(i, i + BATCH);
+      const batchResults = await Promise.all(batch.map(async sym => {
+        try {
+          const yahooSym = encodeURIComponent(sym + suffix);
+          const path = `/v8/finance/chart/${yahooSym}?range=1d&interval=1d&includePrePost=false&formatted=false`;
+          const data = await fetchYahoo(path);
+          const meta = data?.chart?.result?.[0]?.meta;
+          const name = meta?.longName || meta?.shortName || sym;
+          return { sym, name, sector: '', exchange };
+        } catch {
+          return { sym, name: sym, sector: '', exchange };
+        }
+      }));
+      results.push(...batchResults);
+      // Rate limit માટે થોડો delay
+      if (i + BATCH < symList.length) await new Promise(r => setTimeout(r, 300));
+    }
+
+    res.json(results);
+  } catch (e) {
+    console.error('Lookup-batch error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── /quotes — use v8/chart with interval=1d to get current price + meta
-// Chart API works, v7/quote API blocks. So we fetch each symbol via chart API.
 app.get('/quotes', async (req, res) => {
   try {
     const ids = (req.query.ids||'').split(',').filter(Boolean);
     if (!ids.length) return res.json([]);
 
-    // Fetch all in parallel using chart API (which works!)
     const results = await Promise.all(ids.map(async id => {
       try {
         const sym = encodeURIComponent(SYMBOL_MAP[id]||id);
-        // Parallel fetch: 1m intraday (accurate prevClose in meta) + 5d daily (hi/lo/vol)
-        const [intradayData, dailyData] = await Promise.all([
-          fetchYahoo(`/v8/finance/chart/${sym}?range=1d&interval=1m&includePrePost=false&formatted=false`),
-          fetchYahoo(`/v8/finance/chart/${sym}?range=5d&interval=1d&includePrePost=false&formatted=false`),
-        ]);
-        const ri = intradayData?.chart?.result?.[0];
-        const rd = dailyData?.chart?.result?.[0];
-        if (!ri && !rd) return {id, error:true};
-        const meta  = (ri||rd).meta || {};
-        const metaD = (rd||ri).meta || {};
-        const qD      = rd?.indicators?.quote?.[0] || {};
-        const closesD = qD.close || [];
-        const opensD  = qD.open  || [];
-        const highsD  = qD.high  || [];
-        const lowsD   = qD.low   || [];
-        const volsD   = qD.volume|| [];
-        const lastIdxD = (rd?.timestamp||[]).length - 1;
-        // chartPreviousClose = exact prev trading day close (Yahoo official field)
-        const prevClose =
-          meta.chartPreviousClose  ||
-          meta.previousClose       ||
-          metaD.chartPreviousClose ||
-          metaD.previousClose      ||
-          (closesD[lastIdxD - 1] ?? null);
-        const price     = meta.regularMarketPrice || closesD[lastIdxD];
-        const change    = (price != null && prevClose) ? price - prevClose : null;
-        const changePct = (change != null && prevClose) ? (change / prevClose) * 100 : null;
+        const path = `/v8/finance/chart/${sym}?range=5d&interval=1d&includePrePost=false&formatted=false`;
+        const data = await fetchYahoo(path);
+        const r = data?.chart?.result?.[0];
+        if (!r) return {id, error:true};
 
-        const dayHigh = meta.regularMarketDayHigh  || highsD[lastIdxD];
-        const dayLow  = meta.regularMarketDayLow   || lowsD[lastIdxD];
+        const meta = r.meta || {};
+        const q = r.indicators?.quote?.[0] || {};
+        const ts = r.timestamp || [];
+        const lastIdx = ts.length - 1;
 
-        // High/Low % distance from prevClose (shown in range bar)
-        const highFromPrev = (prevClose && dayHigh) ? ((dayHigh - prevClose) / prevClose) * 100 : null;
-        const lowFromPrev  = (prevClose && dayLow)  ? ((dayLow  - prevClose) / prevClose) * 100 : null;
+        const closes = q.close || [];
+        const opens  = q.open  || [];
+        const highs  = q.high  || [];
+        const lows   = q.low   || [];
+        const vols   = q.volume|| [];
+
+        const price    = meta.regularMarketPrice || closes[lastIdx];
+        const prevClose= meta.previousClose || meta.chartPreviousClose || closes[lastIdx-1];
+        const change   = price && prevClose ? price - prevClose : null;
+        const changePct= change && prevClose ? (change/prevClose)*100 : null;
 
         return {
           id,
           price,
           change,
           changePct,
-          dayHigh,
-          dayLow,
-          highFromPrev,
-          lowFromPrev,
-          fiftyTwoWkH: meta.fiftyTwoWeekHigh  || metaD.fiftyTwoWeekHigh,
-          fiftyTwoWkL: meta.fiftyTwoWeekLow   || metaD.fiftyTwoWeekLow,
+          dayHigh:     meta.regularMarketDayHigh  || highs[lastIdx],
+          dayLow:      meta.regularMarketDayLow   || lows[lastIdx],
+          fiftyTwoWkH: meta.fiftyTwoWeekHigh,
+          fiftyTwoWkL: meta.fiftyTwoWeekLow,
           prevClose,
-          open:        meta.regularMarketOpen   || opensD[lastIdxD],
-          volume:      meta.regularMarketVolume || volsD[lastIdxD],
-          mktCap:      meta.marketCap           || metaD.marketCap,
+          open:        meta.regularMarketOpen     || opens[lastIdx],
+          volume:      meta.regularMarketVolume   || vols[lastIdx],
+          mktCap:      meta.marketCap,
           pe:          null,
         };
       } catch(e) {
@@ -135,7 +186,7 @@ app.get('/quotes', async (req, res) => {
   }
 });
 
-// ── /chart — same working approach
+// ── /chart
 app.get('/chart', async (req, res) => {
   try {
     const {id, range='1d', interval='15m'} = req.query;
@@ -158,6 +209,6 @@ app.get('/chart', async (req, res) => {
   }
 });
 
-app.get('/', (req, res) => res.json({status:'ok', version:'2.4'}));
+app.get('/', (req, res) => res.json({status:'ok', version:'2.5'}));
 const PORT = process.env.PORT||3001;
-app.listen(PORT, ()=>console.log(`Proxy v2.4 on port ${PORT}`));
+app.listen(PORT, ()=>console.log(`Proxy v2.5 on port ${PORT}`));

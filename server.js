@@ -7,13 +7,153 @@ const app = express();
 app.use(cors());
 
 const SYMBOL_MAP = {
+  // ── Indices ────────────────────────────────────────────────
   nifty50:'^NSEI', banknifty:'^NSEBANK', sensex:'^BSESN', bankex:'BANKEX.BO',
   finnifty:'NIFTY_FIN_SERVICE.NS', midcap:'^NSEMDCP50', smallcap:'NIFTYSMLCAP250.NS',
-  niftyit:'^CNXIT', reliance:'RELIANCE.NS', tcs:'TCS.NS', hdfcbank:'HDFCBANK.NS',
-  infosys:'INFY.NS', rategain:'RATEGAIN.NS', olectra:'OLECTRA.NS', itc:'ITC.NS',
-  bajfinance:'BAJFINANCE.NS', axisbank:'AXISBANK.NS', wipro:'WIPRO.NS',
-  sbi:'SBIN.NS', tatasteel:'TATASTEEL.NS', hcltech:'HCLTECH.NS',
-  sunpharma:'SUNPHARMA.NS', maruti:'MARUTI.NS', titan:'TITAN.NS',
+  niftyit:'^CNXIT', niftypharma:'^CNXPHARMA', niftyauto:'^CNXAUTO',
+  niftymetal:'^CNXMETAL', niftyfmcg:'^CNXFMCG', niftyrealty:'^CNXREALTY',
+  niftyenergy:'^CNXENERGY', niftyinfra:'^CNXINFRA', niftypse:'^CNXPSE',
+  nifty100:'^CNX100', nifty200:'NIFTY200.NS', nifty500:'^CRSLDX',
+  niftynext50:'^NSMIDCP', niftymidcap150:'NIFTYMIDCAP150.NS',
+  niftysmallcap100:'NIFTYSMLCAP100.NS', niftymicro250:'NIFTYMICROCAP250.NS',
+  sensex50:'BSE-SENSEX50.BO', bse100:'BSE-100.BO', bse200:'BSE-200.BO',
+  bse500:'BSE-500.BO', bsemidcap:'BSE-MID-CAP.BO', bsesmallcap:'BSE-SMLCAP.BO',
+  bsemicrocap:'BSE-MICROCAP.BO', niftymedia:'^CNXMEDIA',
+  niftyconsumer:'^CNXCONSUM', niftyoil:'^CNXOILGAS', niftydefence:'NIFTYDEFENCE.NS',
+  niftypvtbank:'NIFTYPVTBANK.NS', niftypsubank:'^CNXPSUBANK', niftymnc:'^CNXMNC',
+
+  // ── Large Cap ──────────────────────────────────────────────
+  reliance:'RELIANCE.NS', tcs:'TCS.NS', hdfcbank:'HDFCBANK.NS',
+  infosys:'INFY.NS', icicibank:'ICICIBANK.NS', hindunilvr:'HINDUNILVR.NS',
+  itc:'ITC.NS', bajfinance:'BAJFINANCE.NS', sbi:'SBIN.NS', axisbank:'AXISBANK.NS',
+  kotakbank:'KOTAKBANK.NS', lnt:'LT.NS', hcltech:'HCLTECH.NS', wipro:'WIPRO.NS',
+  asianpaint:'ASIANPAINT.NS', maruti:'MARUTI.NS', bajajfinsv:'BAJAJFINSV.NS',
+  titan:'TITAN.NS', sunpharma:'SUNPHARMA.NS', tatasteel:'TATASTEEL.NS',
+  ntpc:'NTPC.NS', powergrid:'POWERGRID.NS', ongc:'ONGC.NS', coalindia:'COALINDIA.NS',
+  jswsteel:'JSWSTEEL.NS', tatamotors:'TATAMOTORS.NS', ultracemco:'ULTRACEMCO.NS',
+  adaniports:'ADANIPORTS.NS', adanient:'ADANIENT.NS', grasim:'GRASIM.NS',
+  indusindbk:'INDUSINDBK.NS', drreddy:'DRREDDY.NS', cipla:'CIPLA.NS',
+  hdfclife:'HDFCLIFE.NS', sbilife:'SBILIFE.NS', techm:'TECHM.NS',
+  nestleind:'NESTLEIND.NS', britannia:'BRITANNIA.NS', heromotoco:'HEROMOTOCO.NS',
+  eichermot:'EICHERMOT.NS', 'bajaj-auto':'BAJAJ-AUTO.NS', apollohosp:'APOLLOHOSP.NS',
+  trent:'TRENT.NS', hindalco:'HINDALCO.NS', vedl:'VEDL.NS', bpcl:'BPCL.NS',
+  iocl:'IOC.NS', hpclgas:'HINDPETRO.NS', gail:'GAIL.NS',
+  shreecem:'SHREECEM.NS', ambujacement:'AMBUJACEM.NS', acccement:'ACC.NS',
+
+  // ── Banking & Financial ────────────────────────────────────
+  pnb:'PNB.NS', bankofbaroda:'BANKBARODA.NS', canarabank:'CANBK.NS',
+  unionbank:'UNIONBANK.NS', idfcfirstb:'IDFCFIRSTB.NS', federalbnk:'FEDERALBNK.NS',
+  yesbank:'YESBANK.NS', bandhanbnk:'BANDHANBNK.NS', rblbank:'RBLBANK.NS',
+  aubank:'AUBANK.NS', equitasbnk:'EQUITASBNK.NS', ujjivansfb:'UJJIVANSFB.NS',
+  cholafin:'CHOLAFIN.NS', muthootfin:'MUTHOOTFIN.NS', manappuram:'MANAPPURAM.NS',
+  lichsgfin:'LICHSGFIN.NS', canfinhome:'CANFINHOME.NS', hdfcamc:'HDFCAMC.NS',
+  nipponlife:'NAM-INDIA.NS', angelone:'ANGELONE.NS', '5paisa':'5PAISA.NS',
+  icicigi:'ICICIGI.NS', starhealth:'STARHEALTH.NS', niacl:'NIACL.NS',
+
+  // ── IT / Technology ────────────────────────────────────────
+  ltim:'LTIM.NS', mphasis:'MPHASIS.NS', persistent:'PERSISTENT.NS',
+  coforge:'COFORGE.NS', hexaware:'HEXAWARE.NS', kpit:'KPITTECH.NS',
+  tanla:'TANLA.NS', rategain:'RATEGAIN.NS', zomato:'ZOMATO.NS',
+  nykaa:'NYKAA.NS', paytm:'PAYTM.NS', policybazaar:'POLICYBZR.NS',
+  indiamart:'INDIAMART.NS', justdial:'JUSTDIAL.NS', matrimony:'MATRIMONY.NS',
+  mapmy:'MAPMYINDIA.NS', route:'ROUTE.NS', tataelxsi:'TATAELXSI.NS',
+  cyient:'CYIENT.NS', zensar:'ZENSARTECH.NS', intellect:'INTELLECT.NS',
+  infoedge:'NAUKRI.NS',
+
+  // ── Pharma & Healthcare ────────────────────────────────────
+  divi:'DIVISLAB.NS', auropharma:'AUROPHARMA.NS', lupin:'LUPIN.NS',
+  torntpharm:'TORNTPHARM.NS', alkem:'ALKEM.NS', ipca:'IPCALAB.NS',
+  abbotindia:'ABBOTINDIA.NS', glaxo:'GLAXO.NS', pfizer:'PFIZER.NS',
+  sanofi:'SANOFI.NS', gland:'GLAND.NS', eris:'ERIS.NS',
+  piramalent:'PIRAMALENT.NS', maxhealthcare:'MAXHEALTH.NS', fortis:'FORTIS.NS',
+  narayana:'NH.NS', metropolis:'METROPOLIS.NS', thyrocare:'THYROCARE.NS',
+
+  // ── Auto & EV ──────────────────────────────────────────────
+  tvsmotors:'TVSMOTOR.NS', ashokley:'ASHOKLEY.NS', mahindra:'M&M.NS',
+  bosch:'BOSCHLTD.NS', motherson:'MOTHERSON.NS', mrf:'MRF.NS',
+  apollotyre:'APOLLOTYRE.NS', ceatltd:'CEATLTD.NS', balkrisind:'BALKRISIND.NS',
+  olectra:'OLECTRA.NS', tatapower:'TATAPOWER.NS', abb:'ABB.NS',
+  bel:'BEL.NS', exideind:'EXIDEIND.NS', amara:'AMARAJABAT.NS',
+
+  // ── FMCG & Consumer ───────────────────────────────────────
+  dabur:'DABUR.NS', marico:'MARICO.NS', colpal:'COLPAL.NS',
+  emamiltd:'EMAMILTD.NS', gillette:'GILLETTE.NS', pghh:'PGHH.NS',
+  varun:'VBL.NS', unitedbrew:'UBL.NS', radico:'RADICO.NS',
+  dmart:'DMART.NS', tatacons:'TATACONSUM.NS', godrejcp:'GODREJCP.NS',
+  pidilitind:'PIDILITIND.NS', pageind:'PAGEIND.NS', vbl:'MANYAVAR.NS',
+  voltas:'VOLTAS.NS', whirlpool:'WHIRLPOOL.NS', havells:'HAVELLS.NS',
+  crompton:'CROMPTON.NS', amber:'AMBER.NS', dixon:'DIXON.NS', kaynes:'KAYNES.NS',
+
+  // ── Metals & Mining ───────────────────────────────────────
+  nationalum:'NATIONALUM.NS', hindcopper:'HINDCOPPER.NS',
+  ratnamani:'RATNAMANI.NS', welcorp:'WELCORP.NS', kalyankjil:'KALYANKJIL.NS',
+  pcjeweller:'PCJEWELLER.NS', rajeshexpo:'RAJESHEXPO.NS',
+  nmdc:'NMDC.NS', moil:'MOIL.NS',
+
+  // ── Energy & Power ────────────────────────────────────────
+  adanigreen:'ADANIGREEN.NS', adanitrans:'ADANITRANS.NS', adanipower:'ADANIPOWER.NS',
+  torntpower:'TORNTPOWER.NS', cesc:'CESC.NS', jspenergy:'JSPOW.NS',
+  suzlon:'SUZLON.NS', gipcl:'GIPCL.NS', indgas:'IGL.NS', mgl:'MGL.NS',
+  petronet:'PETRONET.NS', castrol:'CASTROL.NS',
+
+  // ── Infra & Real Estate ───────────────────────────────────
+  dlf:'DLF.NS', godrejprop:'GODREJPROP.NS', oberoireal:'OBEROIRLTY.NS',
+  prestige:'PRESTIGE.NS', brigade:'BRIGADE.NS', sobha:'SOBHA.NS',
+  phoenixltd:'PHOENIXLTD.NS', irb:'IRB.NS', kalpataru:'KPIL.NS',
+  ncc:'NCC.NS', ashokbuild:'ASHOKA.NS', knrcon:'KNRCON.NS',
+  hginfra:'HGINFRA.NS', rvnl:'RVNL.NS', irfc:'IRFC.NS',
+  irctc:'IRCTC.NS', container:'CONCOR.NS',
+
+  // ── Cement ────────────────────────────────────────────────
+  ramcocem:'RAMCOCEM.NS', jkcement:'JKCEMENT.NS', jklakshmi:'JKLAKSHMI.NS',
+  heidelberg:'HEIDELBERG.NS', birlacorp:'BIRLACORP.NS',
+
+  // ── Textiles ──────────────────────────────────────────────
+  raymond:'RAYMOND.NS', trident:'TRIDENT.NS', arvind:'ARVIND.NS',
+  welspunind:'WELSPUNIND.NS', rupa:'RUPA.NS', kitex:'KITEX.NS',
+
+  // ── Media & Telecom ───────────────────────────────────────
+  airtel:'BHARTIARTL.NS', vodafone:'IDEA.NS', industower:'INDUSTOWER.NS',
+  tatacomm:'TATACOMM.NS', hathway:'HATHWAY.NS', suntv:'SUNTV.NS',
+  zeel:'ZEEL.NS', pvrinox:'PVRINOX.NS',
+
+  // ── Defence ───────────────────────────────────────────────
+  hal:'HAL.NS', bhel:'BHEL.NS', cochinship:'COCHINSHIP.NS',
+  mazagondock:'MAZDOCK.NS', gardenreach:'GRSE.NS', beml:'BEML.NS',
+  'data-pattern':'DATAPATTNS.NS', 'bharat-dyn':'BDL.NS',
+
+  // ── Chemicals ─────────────────────────────────────────────
+  srf:'SRF.NS', aarti:'AARTIIND.NS', navinfluor:'NAVINFLUOR.NS',
+  clean:'CLEAN.NS', galaxysurf:'GALAXYSURF.NS', vinatiorg:'VINATIORGA.NS',
+  deepaknit:'DEEPAKNTR.NS', gnfc:'GNFC.NS', coromandel:'COROMANDEL.NS',
+  chambalfert:'CHAMBLFERT.NS', ralisgro:'RALLIS.NS', piindustries:'PIIND.NS',
+  excel:'EXCEL.NS', tatachem:'TATACHEM.NS',
+
+  // ── Logistics ─────────────────────────────────────────────
+  bluedart:'BLUEDART.NS', delhivery:'DELHIVERY.NS',
+  mahindralog:'MAHLOG.NS', spoton:'TCI.NS', gati:'GATI.NS',
+
+  // ── Agriculture & Food ────────────────────────────────────
+  adanindag:'ADANIWILMAR.NS', krbl:'KRBL.NS', ltfoods:'LTFOODS.NS',
+  patanjali:'PATANJALI.NS', kaveri:'KSCL.NS',
+
+  // ── Hotels & Tourism ──────────────────────────────────────
+  indhotel:'INDHOTEL.NS', eihltd:'EIHOTEL.NS', lemontree:'LEMONTREE.NS',
+  mahindraholidays:'MHRIL.NS', thomascook:'THOMASCOOK.NS', easemytrip:'EASEMYTRIP.NS',
+
+  // ── PSU / Govt ────────────────────────────────────────────
+  nhpc:'NHPC.NS', recltd:'RECLTD.NS', pfc:'PFC.NS', hudco:'HUDCO.NS',
+  ireda:'IREDA.NS', nbcc:'NBCC.NS', rites:'RITES.NS',
+  enginersin:'ENGINERSIN.NS', oil:'OIL.NS', mrpl:'MRPL.NS',
+  chennpetro:'CHENNPETRO.NS', bomdyeing:'BOMDYEING.NS',
+
+  // ── Diversified / Finance ─────────────────────────────────
+  godrejind:'GODREJIND.NS', jswinfra:'JSWINFRA.NS',
+  sundarmfin:'SUNDARMFIN.NS', bajajhold:'BAJAJHLDNG.NS',
+  schaeffler:'SCHAEFFLER.NS', skfindia:'SKFINDIA.NS', timken:'TIMKEN.NS',
+  asahiindia:'ASAHIINDIA.NS', suprajit:'SUPRAJIT.NS',
+  careratings:'CARERATING.NS', icra:'ICRA.NS', crisil:'CRISIL.NS',
+  '360one':'360ONE.NS', masfin:'MASFIN.NS', bsfin:'BFINVEST.NS',
 };
 
 function fetchYahoo(path) {

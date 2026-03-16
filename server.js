@@ -92,18 +92,27 @@ app.get('/quotes', async (req, res) => {
         const change   = price && prevClose ? price - prevClose : null;
         const changePct= change && prevClose ? (change/prevClose)*100 : null;
 
+        const dayHigh = meta.regularMarketDayHigh || highs[lastIdx];
+        const dayLow  = meta.regularMarketDayLow  || lows[lastIdx];
+
+        // High/Low distance from prevClose (for context bars)
+        const highFromPrev = prevClose && dayHigh ? ((dayHigh - prevClose) / prevClose) * 100 : null;
+        const lowFromPrev  = prevClose && dayLow  ? ((dayLow  - prevClose) / prevClose) * 100 : null;
+
         return {
           id,
           price,
           change,
           changePct,
-          dayHigh:     meta.regularMarketDayHigh  || highs[lastIdx],
-          dayLow:      meta.regularMarketDayLow   || lows[lastIdx],
+          dayHigh,
+          dayLow,
+          highFromPrev,
+          lowFromPrev,
           fiftyTwoWkH: meta.fiftyTwoWeekHigh,
           fiftyTwoWkL: meta.fiftyTwoWeekLow,
           prevClose,
-          open:        meta.regularMarketOpen     || opens[lastIdx],
-          volume:      meta.regularMarketVolume   || vols[lastIdx],
+          open:        meta.regularMarketOpen || opens[lastIdx],
+          volume:      meta.regularMarketVolume || vols[lastIdx],
           mktCap:      meta.marketCap,
           pe:          null,
         };

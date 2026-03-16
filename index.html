@@ -199,29 +199,45 @@
   .ptr-indicator.visible{height:44px;}
   @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
   .ptr-spin{display:inline-block;animation:spin 0.7s linear infinite;}
-  /* ── Price Flash Animation ── */
+  /* ── Price Flash Animation (polished) ── */
   @keyframes flashUp {
-    0%   { background:rgba(0,229,160,0.22); }
-    60%  { background:rgba(0,229,160,0.10); }
-    100% { background:transparent; }
+    0%   { background:rgba(0,229,160,0.28); box-shadow:inset 3px 0 0 var(--green); }
+    50%  { background:rgba(0,229,160,0.12); box-shadow:inset 3px 0 0 rgba(0,229,160,0.4); }
+    100% { background:transparent; box-shadow:none; }
   }
   @keyframes flashDn {
-    0%   { background:rgba(255,61,107,0.22); }
-    60%  { background:rgba(255,61,107,0.10); }
-    100% { background:transparent; }
+    0%   { background:rgba(255,61,107,0.28); box-shadow:inset 3px 0 0 var(--red); }
+    50%  { background:rgba(255,61,107,0.12); box-shadow:inset 3px 0 0 rgba(255,61,107,0.4); }
+    100% { background:transparent; box-shadow:none; }
   }
   @keyframes numFlashUp {
-    0%,40% { color: var(--green); transform: scale(1.06); }
-    100%   { color: inherit; transform: scale(1); }
+    0%   { color: var(--green); transform: translateY(-2px) scale(1.07); }
+    55%  { color: var(--green); transform: translateY(0px)  scale(1.03); }
+    100% { color: inherit;      transform: translateY(0px)  scale(1); }
   }
   @keyframes numFlashDn {
-    0%,40% { color: var(--red); transform: scale(1.06); }
-    100%   { color: inherit; transform: scale(1); }
+    0%   { color: var(--red);  transform: translateY(2px) scale(1.07); }
+    55%  { color: var(--red);  transform: translateY(0px) scale(1.03); }
+    100% { color: inherit;     transform: translateY(0px) scale(1); }
   }
-  .flash-up { animation: flashUp 0.7s ease-out forwards; }
-  .flash-dn { animation: flashDn 0.7s ease-out forwards; }
-  .price-flash-up { animation: numFlashUp 0.7s ease-out forwards; }
-  .price-flash-dn { animation: numFlashDn 0.7s ease-out forwards; }
+  @keyframes tickerUp {
+    0%   { opacity:0; transform:translateY(4px); }
+    30%  { opacity:1; transform:translateY(0); }
+    70%  { opacity:1; }
+    100% { opacity:0; transform:translateY(-4px); }
+  }
+  @keyframes tickerDn {
+    0%   { opacity:0; transform:translateY(-4px); }
+    30%  { opacity:1; transform:translateY(0); }
+    70%  { opacity:1; }
+    100% { opacity:0; transform:translateY(4px); }
+  }
+  .flash-up { animation: flashUp 1s cubic-bezier(0.22,1,0.36,1) forwards; }
+  .flash-dn { animation: flashDn 1s cubic-bezier(0.22,1,0.36,1) forwards; }
+  .price-flash-up { animation: numFlashUp 0.9s cubic-bezier(0.22,1,0.36,1) forwards; }
+  .price-flash-dn { animation: numFlashDn 0.9s cubic-bezier(0.22,1,0.36,1) forwards; }
+  .ticker-up { display:inline-block; animation: tickerUp 0.9s ease-out forwards; color:var(--green); font-size:9px; margin-left:3px; }
+  .ticker-dn { display:inline-block; animation: tickerDn 0.9s ease-out forwards; color:var(--red);   font-size:9px; margin-left:3px; }
   .stock-left{flex:1;min-width:0;}
   .stock-name{
     font-size:14px;font-weight:700;letter-spacing:-0.2px;
@@ -451,6 +467,18 @@
   .empty-text{font-size:14px;font-weight:600;color:var(--text2);}
   .empty-sub{font-size:12px;color:var(--text3);margin-top:4px;}
 
+  /* ── Offline Banner ── */
+  .offline-banner{
+    position:fixed;top:0;left:50%;transform:translateX(-50%);
+    width:100%;max-width:420px;
+    background:#2a1400;border-bottom:1px solid rgba(245,200,66,0.4);
+    color:var(--accent);font-size:11px;font-family:var(--mono);
+    padding:7px 16px;text-align:center;z-index:999;
+    display:flex;align-items:center;justify-content:center;gap:6px;
+    animation:slideDown 0.3s ease-out;
+  }
+  @keyframes slideDown{from{transform:translateX(-50%) translateY(-100%)}to{transform:translateX(-50%) translateY(0)}}
+
   /* ── Error banner ── */
   .error-banner{
     background:var(--red-dim);border:1px solid rgba(255,61,107,0.25);
@@ -665,17 +693,25 @@ function PriceRow({item, p, isIndex, onPress, onRemove, holdingBadge}) {
   const nameLabel = isIndex ? item.name : (item.sym || item.name);
   const subLabel  = isIndex ? item.desc : item.name;
 
-  // Flash animation
+  // Flash animation — double rAF ensures CSS class re-triggers reliably
   const prevPriceRef = useRef(null);
   const [flashClass, setFlashClass] = useState('');
   const [priceFlash, setPriceFlash] = useState('');
+  const [tickerKey, setTickerKey]   = useState(0);
+  const [tickerDir, setTickerDir]   = useState('');
   useEffect(() => {
     if (!loaded) return;
     const prev = prevPriceRef.current;
     if (prev !== null && prev !== p.price) {
       const dir = p.price > prev ? 'up' : 'dn';
-      setFlashClass(''); setPriceFlash('');
-      requestAnimationFrame(() => { setFlashClass('flash-'+dir); setPriceFlash('price-flash-'+dir); });
+      setFlashClass(''); setPriceFlash(''); setTickerDir('');
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        setFlashClass('flash-'+dir);
+        setPriceFlash('price-flash-'+dir);
+        setTickerDir(dir);
+        setTickerKey(k => k+1);
+        if (navigator.vibrate) navigator.vibrate(dir==='up' ? [10] : [8,10,8]);
+      }));
     }
     prevPriceRef.current = p.price;
   }, [p && p.price]);
@@ -725,6 +761,7 @@ function PriceRow({item, p, isIndex, onPress, onRemove, holdingBadge}) {
           ? h('div', null,
               h('div', {className:'stock-price '+priceFlash},
                 '₹'+fmt(p.price),
+                tickerDir && h('span', {key:tickerKey, className:'ticker-'+tickerDir}, tickerDir==='up'?'▲':'▼'),
                 h('span', {className:'price-pct '+(up?'up':'dn')}, ' ('+fmtPct(p.changePct)+')')
               ),
               h('div', {className:'stock-change '+(up?'up':'dn')}, fmtChg(p.change))
@@ -842,15 +879,75 @@ function DetailModal({item, p, onClose, isIndex, proxyUrl}) {
 
   const pairs = isIndex ? [
     ['PREV CLOSE', p?.prevClose ? '₹'+fmt(p.prevClose) : '—', '', 'OPEN', p?.open ? '₹'+fmt(p.open) : '—', ''],
-    ['DAY HIGH',   p?.dayHigh  ? '₹'+fmt(p.dayHigh)  : '—', 'up', 'DAY LOW', p?.dayLow ? '₹'+fmt(p.dayLow) : '—', 'dn'],
     ['52W HIGH',   p?.fiftyTwoWkH ? '₹'+fmt(p.fiftyTwoWkH) : '—', 'up', '52W LOW', p?.fiftyTwoWkL ? '₹'+fmt(p.fiftyTwoWkL) : '—', 'dn'],
   ] : [
     ['PREV CLOSE', p?.prevClose ? '₹'+fmt(p.prevClose) : '—', '', 'OPEN', p?.open ? '₹'+fmt(p.open) : '—', ''],
-    ['DAY HIGH',   p?.dayHigh  ? '₹'+fmt(p.dayHigh)  : '—', 'up', 'DAY LOW', p?.dayLow ? '₹'+fmt(p.dayLow) : '—', 'dn'],
     ['52W HIGH',   p?.fiftyTwoWkH ? '₹'+fmt(p.fiftyTwoWkH) : '—', 'up', '52W LOW', p?.fiftyTwoWkL ? '₹'+fmt(p.fiftyTwoWkL) : '—', 'dn'],
     ['MKT CAP',    p?.mktCap ? fmtCr(p.mktCap) : '—', '', 'VOLUME', p?.volume ? p.volume.toLocaleString('en-IN') : '—', ''],
     ['SECTOR',     item.sector||'—', '', 'P/E', p?.pe ? p.pe.toFixed(1)+'x' : '—', ''],
   ];
+
+  // Day High/Low range bar relative to prevClose
+  function DayRangeBar({p}) {
+    if (!p || !p.prevClose || !p.dayHigh || !p.dayLow) return null;
+    const pc = p.prevClose;
+    const hi = p.dayHigh, lo = p.dayLow, cur = p.price;
+    // range: from min(lo, pc) to max(hi, pc) with 5% padding
+    const rangeMin = Math.min(lo, pc);
+    const rangeMax = Math.max(hi, pc);
+    const span = rangeMax - rangeMin || 1;
+    const pct = v => Math.max(0, Math.min(100, ((v - rangeMin) / span) * 100));
+    const loPos = pct(lo), hiPos = pct(hi), pcPos = pct(pc), curPos = pct(cur);
+    const hiFromPc = p.highFromPrev, loFromPc = p.lowFromPrev;
+    return h('div', {style:{background:'var(--bg3)',padding:'13px 15px',borderRadius:'var(--radius-sm)',margin:'0 0 1px'}},
+      h('div', {style:{display:'flex',justifyContent:'space-between',marginBottom:8}},
+        h('div', null,
+          h('div', {className:'stat-label'}, 'DAY LOW'),
+          h('div', {className:'stat-val dn'}, '₹'+fmt(lo)),
+          loFromPc != null && h('div', {style:{fontSize:10,color:'var(--red)',fontFamily:'var(--mono)'}},
+            (loFromPc>=0?'+':'')+loFromPc.toFixed(2)+'% vs prev'
+          )
+        ),
+        h('div', {style:{textAlign:'right'}},
+          h('div', {className:'stat-label'}, 'DAY HIGH'),
+          h('div', {className:'stat-val up'}, '₹'+fmt(hi)),
+          hiFromPc != null && h('div', {style:{fontSize:10,color:'var(--green)',fontFamily:'var(--mono)',textAlign:'right'}},
+            (hiFromPc>=0?'+':'')+hiFromPc.toFixed(2)+'% vs prev'
+          )
+        )
+      ),
+      // Range track
+      h('div', {style:{position:'relative',height:6,background:'var(--border)',borderRadius:3,margin:'4px 0 10px'}},
+        // Filled range lo→hi
+        h('div', {style:{
+          position:'absolute',
+          left:loPos+'%', width:(hiPos-loPos)+'%',
+          top:0, height:'100%',
+          background:'linear-gradient(90deg,var(--red-dim),var(--green-dim))',
+          borderRadius:3
+        }}),
+        // prevClose marker
+        h('div', {style:{
+          position:'absolute', left:'calc('+pcPos+'% - 1px)',
+          top:-3, width:2, height:12,
+          background:'var(--accent)', borderRadius:1
+        }}),
+        // Current price dot
+        h('div', {style:{
+          position:'absolute', left:'calc('+curPos+'% - 5px)',
+          top:-2, width:10, height:10,
+          background:p.changePct>=0?'var(--green)':'var(--red)',
+          borderRadius:'50%', border:'2px solid var(--bg2)',
+          boxShadow:'0 0 6px '+(p.changePct>=0?'var(--green)':'var(--red)')
+        }})
+      ),
+      h('div', {style:{display:'flex',justifyContent:'space-between',fontSize:10,color:'var(--text3)',fontFamily:'var(--mono)'}},
+        h('span', null, '₹'+fmt(lo)),
+        h('span', {style:{color:'var(--accent)'}}, '⬛ Prev ₹'+fmt(pc)),
+        h('span', null, '₹'+fmt(hi))
+      )
+    );
+  }
 
   return h('div', {className:'modal-overlay', onClick:e=>{if(e.target===e.currentTarget)onClose();}},
     h('div', {className:'modal'},
@@ -872,6 +969,7 @@ function DetailModal({item, p, onClose, isIndex, proxyUrl}) {
       ),
       // Stats view
       view==='stats' && h('div', {style:{margin:'12px 16px 16px'}},
+        h(DayRangeBar, {p}),
         pairs.map(([ll,lv,lc,rl,rv,rc],i)=>
           h('div', {key:i, style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:1,marginBottom:1}},
             h('div', {style:{background:'var(--bg3)',padding:'11px 14px',borderRadius:i===0?'var(--radius-sm) 0 0 0':i===pairs.length-1?'0 0 0 var(--radius-sm)':'0'}},
@@ -1171,6 +1269,15 @@ function App() {
   const [indices,   setIndices]   = useState(() => { try{return JSON.parse(localStorage.getItem('indices'))||INDICES_META.slice(0,5)}catch{return INDICES_META.slice(0,5)} });
   const [watchlist, setWatchlist] = useState(() => { try{return JSON.parse(localStorage.getItem('watchlist'))||[STOCKS_META[0],STOCKS_META[3],STOCKS_META[4],STOCKS_META[5]]}catch{return [STOCKS_META[0],STOCKS_META[3],STOCKS_META[4],STOCKS_META[5]]} });
   const [portfolio, setPortfolio] = useState(() => { try{return JSON.parse(localStorage.getItem('portfolio'))||[{...STOCKS_META[4],buyDate:'2024-06-15',buyPrice:820,buyQty:50},{...STOCKS_META[5],buyDate:'2024-08-22',buyPrice:1100,buyQty:30},{...STOCKS_META[3],buyDate:'2024-11-10',buyPrice:1480,buyQty:20}]}catch{return []} });
+
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
+  useEffect(() => {
+    const goOnline  = () => setIsOnline(true);
+    const goOffline = () => setIsOnline(false);
+    window.addEventListener('online',  goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => { window.removeEventListener('online', goOnline); window.removeEventListener('offline', goOffline); };
+  }, []);
 
   const [idxFilter,  setIdxFilter]  = useState('Default');
   const [wlFilter,   setWlFilter]   = useState('Default');
@@ -1533,6 +1640,7 @@ function App() {
   // Render all tabs always (display:none for inactive) to preserve input focus
   return h('div', {className:'app'},
     locked && h(LockScreen, {passcode, onUnlock:()=>setLocked(false)}),
+    !isOnline && h('div', {className:'offline-banner'}, '📶 Offline — Cached data shown'),
     h('div', {className:'header'},
       h('div', {className:'header-row'},
         h('div', null,
@@ -1613,12 +1721,29 @@ function App() {
 
 ReactDOM.createRoot(document.getElementById('root')).render(h(App,null));
 
-// Register Service Worker
+// Register Service Worker with update detection
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
-      .then(reg => console.log('SW registered:', reg.scope))
+      .then(reg => {
+        console.log('SW registered:', reg.scope);
+        // Detect new SW waiting — tell it to skip waiting immediately
+        reg.addEventListener('updatefound', () => {
+          const newSW = reg.installing;
+          newSW.addEventListener('statechange', () => {
+            if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+              newSW.postMessage('SKIP_WAITING');
+            }
+          });
+        });
+      })
       .catch(err => console.log('SW error:', err));
+
+    // Reload page when new SW takes control (ensures fresh cache)
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!refreshing) { refreshing = true; window.location.reload(); }
+    });
   });
 }
 </script>

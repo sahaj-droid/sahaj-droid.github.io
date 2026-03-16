@@ -2,8 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="MarketTracker">
+<meta name="theme-color" content="#1a6fd4">
 <title>MarketTracker</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
@@ -158,23 +165,9 @@
   .sec-Metals  {background:rgba(107,114,128,0.18);color:#9ca3af;}
   .sec-Pharma  {background:rgba(20,184,166,0.18);color:#2dd4bf;}
   .sec-Auto    {background:rgba(239,68,68,0.18);color:#f87171;}
-  .sec-Consumer  {background:rgba(236,72,153,0.18);color:#f472b6;}
-  .sec-NSE       {background:rgba(61,142,240,0.15);color:#3d8ef0;}
-  .sec-BSE       {background:rgba(245,200,66,0.15);color:#f5c842;}
-  .sec-Telecom   {background:rgba(99,102,241,0.18);color:#818cf8;}
-  .sec-Insurance {background:rgba(16,185,129,0.18);color:#34d399;}
-  .sec-Finance   {background:rgba(139,92,246,0.18);color:#a78bfa;}
-  .sec-Healthcare{background:rgba(20,184,166,0.18);color:#2dd4bf;}
-  .sec-Infra     {background:rgba(245,158,11,0.18);color:#fbbf24;}
-  .sec-Realty    {background:rgba(239,68,68,0.18);color:#f87171;}
-  .sec-Cement    {background:rgba(120,113,108,0.18);color:#a8a29e;}
-  .sec-Chemicals {background:rgba(52,211,153,0.18);color:#34d399;}
-  .sec-Textiles  {background:rgba(251,113,133,0.18);color:#fb7185;}
-  .sec-Media     {background:rgba(167,139,250,0.18);color:#a78bfa;}
-  .sec-Defence   {background:rgba(55,65,81,0.35);color:#9ca3af;}
-  .sec-Logistics {background:rgba(6,182,212,0.18);color:#22d3ee;}
-  .sec-Retail    {background:rgba(249,115,22,0.18);color:#fb923c;}
-  .sec-Agri      {background:rgba(132,204,22,0.18);color:#a3e635;}
+  .sec-Consumer{background:rgba(236,72,153,0.18);color:#f472b6;}
+  .sec-NSE     {background:rgba(61,142,240,0.15);color:#3d8ef0;}
+  .sec-BSE     {background:rgba(245,200,66,0.15);color:#f5c842;}
 
   /* ── Swipe to Delete ── */
   .swipe-wrap{position:relative;overflow:hidden;}
@@ -485,542 +478,42 @@ const {useState,useEffect,useRef,useCallback}=React;
 const h=React.createElement;
 
 // ═══════════════════════════════════════════════════════════
-// CONFIG
+// CONFIG — After deploying backend, replace with your URL
 // ═══════════════════════════════════════════════════════════
-const PROXY_URL = localStorage.getItem('proxyUrl') || 'http://localhost:3001';
-const REFRESH_INTERVAL = 30;
+const PROXY_URL = 'https://market-proxy-dop7.onrender.com';
+const REFRESH_INTERVAL = 30; // seconds
 
 // ═══════════════════════════════════════════════════════════
 // STATIC METADATA
 // ═══════════════════════════════════════════════════════════
 const INDICES_META = [
-  {id:'nifty50',      name:'NIFTY 50',         desc:'NSE Benchmark'},
-  {id:'banknifty',    name:'BANK NIFTY',        desc:'NSE Banking'},
-  {id:'sensex',       name:'SENSEX',            desc:'BSE 30'},
-  {id:'bankex',       name:'BANKEX',            desc:'BSE Banking'},
-  {id:'finnifty',     name:'FIN NIFTY',         desc:'Financial Services'},
-  {id:'midcap',       name:'MIDCAP NIFTY',      desc:'Mid Cap 150'},
-  {id:'smallcap',     name:'SMALLCAP NIFTY',    desc:'Small Cap 250'},
-  {id:'niftyit',      name:'NIFTY IT',          desc:'IT Sector'},
-  {id:'niftypharma',  name:'NIFTY PHARMA',      desc:'Pharma Sector'},
-  {id:'niftyauto',    name:'NIFTY AUTO',        desc:'Auto Sector'},
-  {id:'niftymetal',   name:'NIFTY METAL',       desc:'Metal Sector'},
-  {id:'niftyfmcg',    name:'NIFTY FMCG',        desc:'FMCG Sector'},
-  {id:'niftyrealty',  name:'NIFTY REALTY',      desc:'Real Estate'},
-  {id:'niftyenergy',  name:'NIFTY ENERGY',      desc:'Energy Sector'},
-  {id:'niftyinfra',   name:'NIFTY INFRA',       desc:'Infrastructure'},
-  {id:'niftypse',     name:'NIFTY PSE',         desc:'Public Sector'},
-  {id:'nifty100',     name:'NIFTY 100',         desc:'Top 100 NSE'},
-  {id:'nifty200',     name:'NIFTY 200',         desc:'Top 200 NSE'},
-  {id:'nifty500',     name:'NIFTY 500',         desc:'Top 500 NSE'},
-  {id:'niftynext50',  name:'NIFTY NEXT 50',     desc:'NSE Next 50'},
-  {id:'niftymidcap150',name:'MIDCAP 150',       desc:'NSE Midcap 150'},
-  {id:'niftysmallcap100',name:'SMALLCAP 100',   desc:'NSE Smallcap 100'},
-  {id:'niftymicro250',name:'MICROCAP 250',      desc:'NSE Microcap 250'},
-  {id:'sensex50',     name:'SENSEX 50',         desc:'BSE Top 50'},
-  {id:'bse100',       name:'BSE 100',           desc:'BSE Top 100'},
-  {id:'bse200',       name:'BSE 200',           desc:'BSE Top 200'},
-  {id:'bse500',       name:'BSE 500',           desc:'BSE Top 500'},
-  {id:'bsemidcap',    name:'BSE MIDCAP',        desc:'BSE Mid Cap'},
-  {id:'bsesmallcap',  name:'BSE SMALLCAP',      desc:'BSE Small Cap'},
-  {id:'bsemicrocap',  name:'BSE MICROCAP',      desc:'BSE Micro Cap'},
-  {id:'niftymedia',   name:'NIFTY MEDIA',       desc:'Media Sector'},
-  {id:'niftyconsumer',name:'NIFTY CONSUMER',    desc:'Consumer Durables'},
-  {id:'niftyoil',     name:'NIFTY OIL & GAS',   desc:'Oil & Gas Sector'},
-  {id:'niftydefence', name:'NIFTY DEFENCE',     desc:'Defence Sector'},
-  {id:'niftypvtbank', name:'NIFTY PVT BANK',    desc:'Private Banks'},
-  {id:'niftypsubank', name:'NIFTY PSU BANK',    desc:'PSU Banks'},
-  {id:'niftymnc',     name:'NIFTY MNC',         desc:'Multinational Corps'},
+  {id:'nifty50',   name:'NIFTY 50',       desc:'NSE Benchmark'},
+  {id:'banknifty', name:'BANK NIFTY',      desc:'NSE Banking'},
+  {id:'sensex',    name:'SENSEX',          desc:'BSE 30'},
+  {id:'bankex',    name:'BANKEX',          desc:'BSE Banking'},
+  {id:'finnifty',  name:'FIN NIFTY',       desc:'Financial Services'},
+  {id:'midcap',    name:'MIDCAP NIFTY',    desc:'Mid Cap 150'},
+  {id:'smallcap',  name:'SMALLCAP NIFTY',  desc:'Small Cap 250'},
+  {id:'niftyit',   name:'NIFTY IT',        desc:'IT Sector'},
 ];
 
 const STOCKS_META = [
-  // ── YOUR CUSTOM WATCHLIST ─────────────────────────────────
-  {id:'reltd',sym:'RELTD',name:'RELTD',exchange:'NSE',sector:''},
-  {id:'iciciamc',sym:'ICICIAMC',name:'ICICIAMC',exchange:'NSE',sector:''},
-  {id:'olectra',sym:'OLECTRA',name:'OLECTRA',exchange:'NSE',sector:''},
-  {id:'kaynes',sym:'KAYNES',name:'KAYNES',exchange:'NSE',sector:''},
-  {id:'baluforge',sym:'BALUFORGE',name:'BALUFORGE',exchange:'NSE',sector:''},
-  {id:'subros',sym:'SUBROS',name:'SUBROS',exchange:'NSE',sector:''},
-  {id:'pwl',sym:'PWL',name:'PWL',exchange:'NSE',sector:''},
-  {id:'garuda',sym:'GARUDA',name:'GARUDA',exchange:'NSE',sector:''},
-  {id:'jwl',sym:'JWL',name:'JWL',exchange:'NSE',sector:''},
-  {id:'tennind',sym:'TENNIND',name:'TENNIND',exchange:'NSE',sector:''},
-  {id:'lemontree',sym:'LEMONTREE',name:'LEMONTREE',exchange:'NSE',sector:''},
-  {id:'shardacrop',sym:'SHARDACROP',name:'SHARDACROP',exchange:'NSE',sector:''},
-  {id:'bse',sym:'BSE',name:'BSE',exchange:'NSE',sector:''},
-  {id:'groww',sym:'GROWW',name:'GROWW',exchange:'NSE',sector:''},
-  {id:'transraill',sym:'TRANSRAILL',name:'TRANSRAILL',exchange:'NSE',sector:''},
-  {id:'hblengine',sym:'HBLENGINE',name:'HBLENGINE',exchange:'NSE',sector:''},
-  {id:'taril',sym:'TARIL',name:'TARIL',exchange:'BSE',sector:''},
-  {id:'shaktipump',sym:'SHAKTIPUMP',name:'SHAKTIPUMP',exchange:'NSE',sector:''},
-  {id:'waareeener',sym:'WAAREEENER',name:'WAAREEENER',exchange:'NSE',sector:''},
-  {id:'remsonsind',sym:'REMSONSIND',name:'REMSONSIND',exchange:'NSE',sector:''},
-  {id:'suryarosni',sym:'SURYAROSNI',name:'SURYAROSNI',exchange:'NSE',sector:''},
-  {id:'vikran',sym:'VIKRAN',name:'VIKRAN',exchange:'NSE',sector:''},
-  {id:'adaniensol',sym:'ADANIENSOL',name:'ADANIENSOL',exchange:'NSE',sector:''},
-  {id:'adanipower',sym:'ADANIPOWER',name:'ADANIPOWER',exchange:'NSE',sector:''},
-  {id:'ambujacem',sym:'AMBUJACEM',name:'AMBUJACEM',exchange:'NSE',sector:''},
-  {id:'trident',sym:'TRIDENT',name:'TRIDENT',exchange:'NSE',sector:''},
-  {id:'kprmill',sym:'KPRMILL',name:'KPRMILL',exchange:'NSE',sector:''},
-  {id:'adanient',sym:'ADANIENT',name:'ADANIENT',exchange:'NSE',sector:''},
-  {id:'adaniports',sym:'ADANIPORTS',name:'ADANIPORTS',exchange:'NSE',sector:''},
-  {id:'krn',sym:'KRN',name:'KRN',exchange:'NSE',sector:''},
-  {id:'lgeindia',sym:'LGEINDIA',name:'LGEINDIA',exchange:'NSE',sector:''},
-  {id:'vedl',sym:'VEDL',name:'VEDL',exchange:'NSE',sector:''},
-  {id:'cpplus',sym:'CPPLUS',name:'CPPLUS',exchange:'NSE',sector:''},
-  {id:'eternal',sym:'ETERNAL',name:'ETERNAL',exchange:'NSE',sector:''},
-  {id:'stylamind',sym:'STYLAMIND',name:'STYLAMIND',exchange:'NSE',sector:''},
-  {id:'sbin',sym:'SBIN',name:'SBIN',exchange:'NSE',sector:''},
-  {id:'reliance',sym:'RELIANCE',name:'RELIANCE',exchange:'NSE',sector:''},
-  {id:'texrail',sym:'TEXRAIL',name:'TEXRAIL',exchange:'NSE',sector:''},
-  {id:'waareertl',sym:'WAAREERTL',name:'WAAREERTL',exchange:'BSE',sector:''},
-  {id:'yatharth',sym:'YATHARTH',name:'YATHARTH',exchange:'NSE',sector:''},
-  {id:'jindrill',sym:'JINDRILL',name:'JINDRILL',exchange:'NSE',sector:''},
-  {id:'sandhar',sym:'SANDHAR',name:'SANDHAR',exchange:'NSE',sector:''},
-  {id:'premexpln',sym:'PREMEXPLN',name:'PREMEXPLN',exchange:'NSE',sector:''},
-  {id:'intlconv',sym:'INTLCONV',name:'INTLCONV',exchange:'NSE',sector:''},
-  {id:'denta',sym:'DENTA',name:'DENTA',exchange:'NSE',sector:''},
-  {id:'bhagyangr',sym:'BHAGYANGR',name:'BHAGYANGR',exchange:'BSE',sector:''},
-  {id:'chennpetro',sym:'CHENNPETRO',name:'CHENNPETRO',exchange:'NSE',sector:''},
-  {id:'hfcl',sym:'HFCL',name:'HFCL',exchange:'NSE',sector:''},
-  {id:'tbz',sym:'TBZ',name:'TBZ',exchange:'NSE',sector:''},
-  {id:'nmdc',sym:'NMDC',name:'NMDC',exchange:'NSE',sector:''},
-  {id:'ellen',sym:'ELLEN',name:'ELLEN',exchange:'NSE',sector:''},
-  {id:'tdpowersys',sym:'TDPOWERSYS',name:'TDPOWERSYS',exchange:'NSE',sector:''},
-  {id:'lloydsengg',sym:'LLOYDSENGG',name:'LLOYDSENGG',exchange:'BSE',sector:''},
-  {id:'maithanall',sym:'MAITHANALL',name:'MAITHANALL',exchange:'BSE',sector:''},
-  {id:'iex',sym:'IEX',name:'IEX',exchange:'NSE',sector:''},
-  {id:'bancoindia',sym:'BANCOINDIA',name:'BANCOINDIA',exchange:'NSE',sector:''},
-  {id:'recltd',sym:'RECLTD',name:'RECLTD',exchange:'NSE',sector:''},
-  {id:'jsll',sym:'JSLL',name:'JSLL',exchange:'NSE',sector:''},
-  {id:'shilpamed',sym:'SHILPAMED',name:'SHILPAMED',exchange:'NSE',sector:''},
-  {id:'tatacap',sym:'TATACAP',name:'TATACAP',exchange:'NSE',sector:''},
-  {id:'ace',sym:'ACE',name:'ACE',exchange:'NSE',sector:''},
-  {id:'meesho',sym:'MEESHO',name:'MEESHO',exchange:'BSE',sector:''},
-  {id:'goldbees',sym:'GOLDBEES',name:'GOLDBEES',exchange:'NSE',sector:''},
-  {id:'goldetf',sym:'GOLDETF',name:'GOLDETF',exchange:'NSE',sector:''},
-  {id:'aci',sym:'ACI',name:'ACI',exchange:'NSE',sector:''},
-  {id:'natcopharm',sym:'NATCOPHARM',name:'NATCOPHARM',exchange:'NSE',sector:''},
-  {id:'urbanco',sym:'URBANCO',name:'URBANCO',exchange:'NSE',sector:''},
-  {id:'acmesolar',sym:'ACMESOLAR',name:'ACMESOLAR',exchange:'NSE',sector:''},
-  {id:'lauruslabs',sym:'LAURUSLABS',name:'LAURUSLABS',exchange:'NSE',sector:''},
-  {id:'nsdl',sym:'NSDL',name:'NSDL',exchange:'BSE',sector:''},
-  {id:'acc',sym:'ACC',name:'ACC',exchange:'NSE',sector:''},
-  {id:'southwest',sym:'SOUTHWEST',name:'SOUTHWEST',exchange:'BSE',sector:''},
-  {id:'igil',sym:'IGIL',name:'IGIL',exchange:'NSE',sector:''},
-  {id:'gmdcltd',sym:'GMDCLTD',name:'GMDCLTD',exchange:'NSE',sector:''},
-  {id:'tmcv',sym:'TMCV',name:'TMCV',exchange:'BSE',sector:''},
-  {id:'acgl',sym:'ACGL',name:'ACGL',exchange:'BSE',sector:''},
-  {id:'tmpv',sym:'TMPV',name:'TMPV',exchange:'NSE',sector:''},
-  {id:'unimech',sym:'UNIMECH',name:'UNIMECH',exchange:'NSE',sector:''},
-  {id:'stovekraft',sym:'STOVEKRAFT',name:'STOVEKRAFT',exchange:'NSE',sector:''},
-  {id:'syrma',sym:'SYRMA',name:'SYRMA',exchange:'NSE',sector:''},
-  {id:'studds',sym:'STUDDS',name:'STUDDS',exchange:'NSE',sector:''},
-  {id:'chemcon',sym:'CHEMCON',name:'CHEMCON',exchange:'NSE',sector:''},
-  {id:'lenskart',sym:'LENSKART',name:'LENSKART',exchange:'NSE',sector:''},
-  {id:'heg',sym:'HEG',name:'HEG',exchange:'BSE',sector:''},
-  {id:'tajgvk',sym:'TAJGVK',name:'TAJGVK',exchange:'NSE',sector:''},
-  {id:'indotech',sym:'INDOTECH',name:'INDOTECH',exchange:'NSE',sector:''},
-  {id:'mosmall250',sym:'MOSMALL250',name:'MOSMALL250',exchange:'NSE',sector:''},
-  {id:'ashokley',sym:'ASHOKLEY',name:'ASHOKLEY',exchange:'NSE',sector:''},
-  {id:'chalet',sym:'CHALET',name:'CHALET',exchange:'NSE',sector:''},
-  {id:'mahepc',sym:'MAHEPC',name:'MAHEPC',exchange:'NSE',sector:''},
-  {id:'elecon',sym:'ELECON',name:'ELECON',exchange:'NSE',sector:''},
-  {id:'hdbfs',sym:'HDBFS',name:'HDBFS',exchange:'NSE',sector:''},
-  {id:'vikramsolr',sym:'VIKRAMSOLR',name:'VIKRAMSOLR',exchange:'NSE',sector:''},
-  {id:'greavescot',sym:'GREAVESCOT',name:'GREAVESCOT',exchange:'NSE',sector:''},
-  {id:'hondapower',sym:'HONDAPOWER',name:'HONDAPOWER',exchange:'NSE',sector:''},
-  {id:'globecivil',sym:'GLOBECIVIL',name:'GLOBECIVIL',exchange:'NSE',sector:''},
-  {id:'arvsmart',sym:'ARVSMART',name:'ARVSMART',exchange:'NSE',sector:''},
-  {id:'sci',sym:'SCI',name:'SCI',exchange:'NSE',sector:''},
-  {id:'moschip',sym:'MOSCHIP',name:'MOSCHIP',exchange:'NSE',sector:''},
-  {id:'veljan',sym:'VELJAN',name:'VELJAN',exchange:'BSE',sector:''},
-  {id:'micel',sym:'MICEL',name:'MICEL',exchange:'BSE',sector:''},
-  {id:'shaily',sym:'SHAILY',name:'SHAILY',exchange:'NSE',sector:''},
-  {id:'ipl',sym:'IPL',name:'IPL',exchange:'NSE',sector:''},
-  {id:'mazda',sym:'MAZDA',name:'MAZDA',exchange:'NSE',sector:''},
-  {id:'bodalchem',sym:'BODALCHEM',name:'BODALCHEM',exchange:'NSE',sector:''},
-  {id:'genuspower',sym:'GENUSPOWER',name:'GENUSPOWER',exchange:'NSE',sector:''},
-  {id:'smallcap',sym:'SMALLCAP',name:'SMALLCAP',exchange:'NSE',sector:''},
-  {id:'eiel',sym:'EIEL',name:'EIEL',exchange:'NSE',sector:''},
-  {id:'gujaratpoly',sym:'GUJARATPOLY',name:'GUJARATPOLY',exchange:'BSE',sector:''},
-  {id:'mkexim',sym:'MKEXIM',name:'MKEXIM',exchange:'BSE',sector:''},
-  {id:'rohltd',sym:'ROHLTD',name:'ROHLTD',exchange:'NSE',sector:''},
-  {id:'ratnaveer',sym:'RATNAVEER',name:'RATNAVEER',exchange:'NSE',sector:''},
-  {id:'omaxauto',sym:'OMAXAUTO',name:'OMAXAUTO',exchange:'BSE',sector:''},
-  {id:'tatasteel',sym:'TATASTEEL',name:'TATASTEEL',exchange:'BSE',sector:''},
-  {id:'meil',sym:'MEIL',name:'MEIL',exchange:'NSE',sector:''},
-  {id:'atulauto',sym:'ATULAUTO',name:'ATULAUTO',exchange:'NSE',sector:''},
-  {id:'basilic',sym:'BASILIC',name:'BASILIC',exchange:'NSE',sector:''},
-  {id:'inoxindia',sym:'INOXINDIA',name:'INOXINDIA',exchange:'NSE',sector:''},
-  {id:'bluejet',sym:'BLUEJET',name:'BLUEJET',exchange:'BSE',sector:''},
-  {id:'patanjali',sym:'PATANJALI',name:'PATANJALI',exchange:'NSE',sector:''},
-  {id:'powermech',sym:'POWERMECH',name:'POWERMECH',exchange:'NSE',sector:''},
-  {id:'motherson',sym:'MOTHERSON',name:'MOTHERSON',exchange:'BSE',sector:''},
-  {id:'hdfcamc',sym:'HDFCAMC',name:'HDFCAMC',exchange:'NSE',sector:''},
-  {id:'jswcement',sym:'JSWCEMENT',name:'JSWCEMENT',exchange:'BSE',sector:''},
-  {id:'hdfcbank',sym:'HDFCBANK',name:'HDFCBANK',exchange:'BSE',sector:''},
-  {id:'paisalo',sym:'PAISALO',name:'PAISALO',exchange:'BSE',sector:''},
-  {id:'cupid',sym:'CUPID',name:'CUPID',exchange:'BSE',sector:''},
-  {id:'igarashi',sym:'IGARASHI',name:'IGARASHI',exchange:'NSE',sector:''},
-  {id:'supriya',sym:'SUPRIYA',name:'SUPRIYA',exchange:'NSE',sector:''},
-  {id:'kirlosbros',sym:'KIRLOSBROS',name:'KIRLOSBROS',exchange:'NSE',sector:''},
-  {id:'bondada',sym:'BONDADA',name:'BONDADA',exchange:'BSE',sector:''},
-  {id:'nile',sym:'NILE',name:'NILE',exchange:'BSE',sector:''},
-  {id:'veto',sym:'VETO',name:'VETO',exchange:'NSE',sector:''},
-  {id:'zentec',sym:'ZENTEC',name:'ZENTEC',exchange:'NSE',sector:''},
-  {id:'kpigreen',sym:'KPIGREEN',name:'KPIGREEN',exchange:'BSE',sector:''},
-  {id:'simmond',sym:'SIMMOND',name:'SIMMOND',exchange:'BSE',sector:''},
-  {id:'technoe',sym:'TECHNOE',name:'TECHNOE',exchange:'NSE',sector:''},
-  {id:'icicibank',sym:'ICICIBANK',name:'ICICIBANK',exchange:'NSE',sector:''},
-  {id:'imagicaa',sym:'IMAGICAA',name:'IMAGICAA',exchange:'NSE',sector:''},
-  {id:'bluestarco',sym:'BLUESTARCO',name:'BLUESTARCO',exchange:'NSE',sector:''},
-  {id:'datapattns',sym:'DATAPATTNS',name:'DATAPATTNS',exchange:'NSE',sector:''},
-  {id:'schneider',sym:'SCHNEIDER',name:'SCHNEIDER',exchange:'BSE',sector:''},
-  {id:'castrolind',sym:'CASTROLIND',name:'CASTROLIND',exchange:'NSE',sector:''},
-  {id:'avantel',sym:'AVANTEL',name:'AVANTEL',exchange:'NSE',sector:''},
-  {id:'polyplex',sym:'POLYPLEX',name:'POLYPLEX',exchange:'NSE',sector:''},
-  {id:'sailife',sym:'SAILIFE',name:'SAILIFE',exchange:'NSE',sector:''},
-  {id:'sail',sym:'SAIL',name:'SAIL',exchange:'NSE',sector:''},
-  {id:'hyundai',sym:'HYUNDAI',name:'HYUNDAI',exchange:'NSE',sector:''},
-  {id:'rtnindia',sym:'RTNINDIA',name:'RTNINDIA',exchange:'BSE',sector:''},
-  {id:'jbma',sym:'JBMA',name:'JBMA',exchange:'NSE',sector:''},
-  {id:'alembicltd',sym:'ALEMBICLTD',name:'ALEMBICLTD',exchange:'NSE',sector:''},
-  {id:'univastu',sym:'UNIVASTU',name:'UNIVASTU',exchange:'NSE',sector:''},
-  {id:'aeroenter',sym:'AEROENTER',name:'AEROENTER',exchange:'NSE',sector:''},
-  {id:'mrpl',sym:'MRPL',name:'MRPL',exchange:'NSE',sector:''},
-  {id:'refex',sym:'REFEX',name:'REFEX',exchange:'NSE',sector:''},
-  {id:'indofarm',sym:'INDOFARM',name:'INDOFARM',exchange:'BSE',sector:''},
-  {id:'multibase',sym:'MULTIBASE',name:'MULTIBASE',exchange:'BSE',sector:''},
-  {id:'madrasfert',sym:'MADRASFERT',name:'MADRASFERT',exchange:'NSE',sector:''},
-  {id:'greenply',sym:'GREENPLY',name:'GREENPLY',exchange:'NSE',sector:''},
-  {id:'hscl',sym:'HSCL',name:'HSCL',exchange:'NSE',sector:''},
-  {id:'bajfinance',sym:'BAJFINANCE',name:'BAJFINANCE',exchange:'NSE',sector:''},
-  {id:'mircelectr',sym:'MIRCELECTR',name:'MIRCELECTR',exchange:'BSE',sector:''},
-  {id:'bpl',sym:'BPL',name:'BPL',exchange:'BSE',sector:''},
-  {id:'suzlon',sym:'SUZLON',name:'SUZLON',exchange:'NSE',sector:''},
-  {id:'zensartech',sym:'ZENSARTECH',name:'ZENSARTECH',exchange:'NSE',sector:''},
-  {id:'ircon',sym:'IRCON',name:'IRCON',exchange:'NSE',sector:''},
-  {id:'silverbees',sym:'SILVERBEES',name:'SILVERBEES',exchange:'NSE',sector:''},
-  {id:'varroc',sym:'VARROC',name:'VARROC',exchange:'NSE',sector:''},
-  {id:'indusindbk',sym:'INDUSINDBK',name:'INDUSINDBK',exchange:'BSE',sector:''},
-  {id:'integraen',sym:'INTEGRAEN',name:'INTEGRAEN',exchange:'BSE',sector:''},
-  {id:'jindworld',sym:'JINDWORLD',name:'JINDWORLD',exchange:'NSE',sector:''},
-  {id:'olaelec',sym:'OLAELEC',name:'OLAELEC',exchange:'BSE',sector:''},
-  {id:'kecl',sym:'KECL',name:'KECL',exchange:'NSE',sector:''},
-  {id:'electcast',sym:'ELECTCAST',name:'ELECTCAST',exchange:'NSE',sector:''},
-  {id:'paytm',sym:'PAYTM',name:'PAYTM',exchange:'NSE',sector:''},
-  {id:'titan',sym:'TITAN',name:'TITAN',exchange:'NSE',sector:''},
-  {id:'anthem',sym:'ANTHEM',name:'ANTHEM',exchange:'NSE',sector:''},
-  {id:'transworld',sym:'TRANSWORLD',name:'TRANSWORLD',exchange:'NSE',sector:''},
-  {id:'jktyre',sym:'JKTYRE',name:'JKTYRE',exchange:'NSE',sector:''},
-  {id:'infy',sym:'INFY',name:'INFY',exchange:'NSE',sector:''},
-  {id:'moil',sym:'MOIL',name:'MOIL',exchange:'NSE',sector:''},
-  {id:'sudarschem',sym:'SUDARSCHEM',name:'SUDARSCHEM',exchange:'NSE',sector:''},
-  {id:'forcemot',sym:'FORCEMOT',name:'FORCEMOT',exchange:'NSE',sector:''},
-  {id:'godfryphlp',sym:'GODFRYPHLP',name:'GODFRYPHLP',exchange:'NSE',sector:''},
-  {id:'itc',sym:'ITC',name:'ITC',exchange:'NSE',sector:''},
-  {id:'ekc',sym:'EKC',name:'EKC',exchange:'NSE',sector:''},
-  {id:'tcs',sym:'TCS',name:'TCS',exchange:'BSE',sector:''},
-  {id:'dcmsrind',sym:'DCMSRIND',name:'DCMSRIND',exchange:'NSE',sector:''},
-  {id:'atgl',sym:'ATGL',name:'ATGL',exchange:'NSE',sector:''},
-  {id:'rategain',sym:'RATEGAIN',name:'RATEGAIN',exchange:'NSE',sector:''},
-  {id:'kec',sym:'KEC',name:'KEC',exchange:'NSE',sector:''},
-  {id:'tanaa',sym:'TANAA',name:'TANAA',exchange:'BSE',sector:''},
-  {id:'jiofin',sym:'JIOFIN',name:'JIOFIN',exchange:'NSE',sector:''},
-  {id:'exhicon',sym:'EXHICON',name:'EXHICON',exchange:'BSE',sector:''},
-  {id:'shreeosfm',sym:'SHREEOSFM',name:'SHREEOSFM',exchange:'NSE',sector:''},
-  {id:'20microns',sym:'20MICRONS',name:'20MICRONS',exchange:'BSE',sector:''},
-  {id:'mishtann',sym:'MISHTANN',name:'MISHTANN',exchange:'BSE',sector:''},
-  {id:'mhlxmiru',sym:'MHLXMIRU',name:'MHLXMIRU',exchange:'BSE',sector:''},
-  {id:'goodricke',sym:'GOODRICKE',name:'GOODRICKE',exchange:'BSE',sector:''},
-  {id:'stardelta',sym:'STARDELTA',name:'STARDELTA',exchange:'BSE',sector:''},
-  {id:'jtlind',sym:'JTLIND',name:'JTLIND',exchange:'NSE',sector:''},
-  {id:'pancarbon',sym:'PANCARBON',name:'PANCARBON',exchange:'BSE',sector:''},
-  {id:'rexnord',sym:'REXNORD',name:'REXNORD',exchange:'BSE',sector:''},
-  {id:'somiconvey',sym:'SOMICONVEY',name:'SOMICONVEY',exchange:'NSE',sector:''},
-  {id:'pixtrans',sym:'PIXTRANS',name:'PIXTRANS',exchange:'NSE',sector:''},
-  {id:'globoffs',sym:'GLOBOFFS',name:'GLOBOFFS',exchange:'BSE',sector:''},
-  {id:'swissmltry',sym:'SWISSMLTRY',name:'SWISSMLTRY',exchange:'BSE',sector:''},
-  {id:'rdbrl',sym:'RDBRL',name:'RDBRL',exchange:'BSE',sector:''},
-  {id:'chamblfert',sym:'CHAMBLFERT',name:'CHAMBLFERT',exchange:'NSE',sector:''},
-  {id:'mmfl',sym:'MMFL',name:'MMFL',exchange:'NSE',sector:''},
-  {id:'cewater',sym:'CEWATER',name:'CEWATER',exchange:'NSE',sector:''},
-  {id:'vmm',sym:'VMM',name:'VMM',exchange:'NSE',sector:''},
-  {id:'scilal',sym:'SCILAL',name:'SCILAL',exchange:'BSE',sector:''},
-  {id:'irctc',sym:'IRCTC',name:'IRCTC',exchange:'NSE',sector:''},
-  {id:'heranba',sym:'HERANBA',name:'HERANBA',exchange:'NSE',sector:''},
-  {id:'nbcc',sym:'NBCC',name:'NBCC',exchange:'NSE',sector:''},
-  {id:'heromotoco',sym:'HEROMOTOCO',name:'HEROMOTOCO',exchange:'NSE',sector:''},
-  {id:'idea',sym:'IDEA',name:'IDEA',exchange:'NSE',sector:''},
-  {id:'ifci',sym:'IFCI',name:'IFCI',exchange:'NSE',sector:''},
-  {id:'lici',sym:'LICI',name:'LICI',exchange:'BSE',sector:''},
-  {id:'hindzinc',sym:'HINDZINC',name:'HINDZINC',exchange:'NSE',sector:''},
-  {id:'hindcopper',sym:'HINDCOPPER',name:'HINDCOPPER',exchange:'NSE',sector:''},
-  {id:'hindalco',sym:'HINDALCO',name:'HINDALCO',exchange:'BSE',sector:''},
-  {id:'hindoilexp',sym:'HINDOILEXP',name:'HINDOILEXP',exchange:'NSE',sector:''},
-  {id:'nationalum',sym:'NATIONALUM',name:'NATIONALUM',exchange:'NSE',sector:''},
-  {id:'swsolar',sym:'SWSOLAR',name:'SWSOLAR',exchange:'NSE',sector:''},
-  {id:'efcil',sym:'EFCIL',name:'EFCIL',exchange:'BSE',sector:''},
-  {id:'ireda',sym:'IREDA',name:'IREDA',exchange:'NSE',sector:''},
-  {id:'bajaj_auto',sym:'BAJAJ-AUTO',name:'BAJAJ-AUTO',exchange:'BSE',sector:''},
-  {id:'bajajhcare',sym:'BAJAJHCARE',name:'BAJAJHCARE',exchange:'NSE',sector:''},
-  {id:'symphony',sym:'SYMPHONY',name:'SYMPHONY',exchange:'NSE',sector:''},
-  {id:'iolcp',sym:'IOLCP',name:'IOLCP',exchange:'NSE',sector:''},
-  {id:'shilgravq',sym:'SHILGRAVQ',name:'SHILGRAVQ',exchange:'BSE',sector:''},
-  {id:'tejasnet',sym:'TEJASNET',name:'TEJASNET',exchange:'BSE',sector:''},
-  {id:'jkpaper',sym:'JKPAPER',name:'JKPAPER',exchange:'BSE',sector:''},
-  {id:'ucobank',sym:'UCOBANK',name:'UCOBANK',exchange:'BSE',sector:''},
-  {id:'stallion',sym:'STALLION',name:'STALLION',exchange:'BSE',sector:''},
-  {id:'styrenix',sym:'STYRENIX',name:'STYRENIX',exchange:'NSE',sector:''},
-  {id:'mcel',sym:'MCEL',name:'MCEL',exchange:'BSE',sector:''},
-  {id:'lichsgfin',sym:'LICHSGFIN',name:'LICHSGFIN',exchange:'BSE',sector:''},
-  {id:'pfc',sym:'PFC',name:'PFC',exchange:'BSE',sector:''},
-  {id:'zaggle',sym:'ZAGGLE',name:'ZAGGLE',exchange:'NSE',sector:''},
-  {id:'kirlpnu',sym:'KIRLPNU',name:'KIRLPNU',exchange:'NSE',sector:''},
-  {id:'isgec',sym:'ISGEC',name:'ISGEC',exchange:'NSE',sector:''},
-  {id:'gna',sym:'GNA',name:'GNA',exchange:'NSE',sector:''},
-  {id:'donear',sym:'DONEAR',name:'DONEAR',exchange:'NSE',sector:''},
-  {id:'belrise',sym:'BELRISE',name:'BELRISE',exchange:'NSE',sector:''},
-  {id:'tatainvest',sym:'TATAINVEST',name:'TATAINVEST',exchange:'BSE',sector:''},
-  {id:'pgfoilq',sym:'PGFOILQ',name:'PGFOILQ',exchange:'BSE',sector:''},
-  {id:'aeroflex',sym:'AEROFLEX',name:'AEROFLEX',exchange:'NSE',sector:''},
-  {id:'adanigreen',sym:'ADANIGREEN',name:'ADANIGREEN',exchange:'BSE',sector:''},
-  {id:'smlmah',sym:'SMLMAH',name:'SMLMAH',exchange:'BSE',sector:''},
-  {id:'elprointl',sym:'ELPROINTL',name:'ELPROINTL',exchange:'BSE',sector:''},
-  {id:'cninfotech',sym:'CNINFOTECH',name:'CNINFOTECH',exchange:'BSE',sector:''},
-  {id:'geship',sym:'GESHIP',name:'GESHIP',exchange:'NSE',sector:''},
-  {id:'renuka',sym:'RENUKA',name:'RENUKA',exchange:'BSE',sector:''},
-  {id:'irb',sym:'IRB',name:'IRB',exchange:'NSE',sector:''},
-  {id:'morepenlab',sym:'MOREPENLAB',name:'MOREPENLAB',exchange:'NSE',sector:''},
-  {id:'nhpc',sym:'NHPC',name:'NHPC',exchange:'NSE',sector:''},
-  {id:'idfcfirstb',sym:'IDFCFIRSTB',name:'IDFCFIRSTB',exchange:'BSE',sector:''},
-  {id:'idbi',sym:'IDBI',name:'IDBI',exchange:'NSE',sector:''},
-  {id:'shrirampps',sym:'SHRIRAMPPS',name:'SHRIRAMPPS',exchange:'NSE',sector:''},
-  {id:'sjvn',sym:'SJVN',name:'SJVN',exchange:'NSE',sector:''},
-  {id:'dolatalgo',sym:'DOLATALGO',name:'DOLATALGO',exchange:'NSE',sector:''},
-  {id:'ntpcgreen',sym:'NTPCGREEN',name:'NTPCGREEN',exchange:'NSE',sector:''},
-  {id:'canbk',sym:'CANBK',name:'CANBK',exchange:'NSE',sector:''},
-  {id:'bajajhfl',sym:'BAJAJHFL',name:'BAJAJHFL',exchange:'BSE',sector:''},
-  {id:'yesbank',sym:'YESBANK',name:'YESBANK',exchange:'NSE',sector:''},
-  {id:'irfc',sym:'IRFC',name:'IRFC',exchange:'NSE',sector:''},
-  {id:'zeel',sym:'ZEEL',name:'ZEEL',exchange:'NSE',sector:''},
-  {id:'ioc',sym:'IOC',name:'IOC',exchange:'NSE',sector:''},
-  {id:'gppl',sym:'GPPL',name:'GPPL',exchange:'NSE',sector:''},
-  {id:'mufti',sym:'MUFTI',name:'MUFTI',exchange:'NSE',sector:''},
-  {id:'vprpl',sym:'VPRPL',name:'VPRPL',exchange:'NSE',sector:''},
-  {id:'inoxwind',sym:'INOXWIND',name:'INOXWIND',exchange:'BSE',sector:''},
-  {id:'arisinfra',sym:'ARISINFRA',name:'ARISINFRA',exchange:'NSE',sector:''},
-  {id:'gail',sym:'GAIL',name:'GAIL',exchange:'NSE',sector:''},
-  {id:'exicom',sym:'EXICOM',name:'EXICOM',exchange:'NSE',sector:''},
-  {id:'lxchem',sym:'LXCHEM',name:'LXCHEM',exchange:'NSE',sector:''},
-  {id:'balmlawrie',sym:'BALMLAWRIE',name:'BALMLAWRIE',exchange:'NSE',sector:''},
-  {id:'ikio',sym:'IKIO',name:'IKIO',exchange:'NSE',sector:''},
-  {id:'vipulorg',sym:'VIPULORG',name:'VIPULORG',exchange:'BSE',sector:''},
-  {id:'enginersin',sym:'ENGINERSIN',name:'ENGINERSIN',exchange:'NSE',sector:''},
-  {id:'bankbaroda',sym:'BANKBARODA',name:'BANKBARODA',exchange:'NSE',sector:''},
-  {id:'ongc',sym:'ONGC',name:'ONGC',exchange:'NSE',sector:''},
-  {id:'bhel',sym:'BHEL',name:'BHEL',exchange:'NSE',sector:''},
-  {id:'dcxindia',sym:'DCXINDIA',name:'DCXINDIA',exchange:'NSE',sector:''},
-  {id:'sanghvimov',sym:'SANGHVIMOV',name:'SANGHVIMOV',exchange:'NSE',sector:''},
-  {id:'uds',sym:'UDS',name:'UDS',exchange:'NSE',sector:''},
-  {id:'jswinfra',sym:'JSWINFRA',name:'JSWINFRA',exchange:'NSE',sector:''},
-  {id:'iti',sym:'ITI',name:'ITI',exchange:'NSE',sector:''},
-  {id:'ntpc',sym:'NTPC',name:'NTPC',exchange:'NSE',sector:''},
-  {id:'exideind',sym:'EXIDEIND',name:'EXIDEIND',exchange:'NSE',sector:''},
-  {id:'coalindia',sym:'COALINDIA',name:'COALINDIA',exchange:'NSE',sector:''},
-  {id:'rvnl',sym:'RVNL',name:'RVNL',exchange:'NSE',sector:''},
-  {id:'tatapower',sym:'TATAPOWER',name:'TATAPOWER',exchange:'NSE',sector:''},
-  {id:'bel',sym:'BEL',name:'BEL',exchange:'NSE',sector:''},
-  {id:'pcbl',sym:'PCBL',name:'PCBL',exchange:'NSE',sector:''},
-  {id:'wpil',sym:'WPIL',name:'WPIL',exchange:'BSE',sector:''},
-  {id:'dlinkindia',sym:'DLINKINDIA',name:'DLINKINDIA',exchange:'NSE',sector:''},
-  {id:'hpl',sym:'HPL',name:'HPL',exchange:'NSE',sector:''},
-  {id:'akums',sym:'AKUMS',name:'AKUMS',exchange:'NSE',sector:''},
-  {id:'triturbine',sym:'TRITURBINE',name:'TRITURBINE',exchange:'NSE',sector:''},
-  {id:'emslimited',sym:'EMSLIMITED',name:'EMSLIMITED',exchange:'NSE',sector:''},
-  {id:'dharmaj',sym:'DHARMAJ',name:'DHARMAJ',exchange:'BSE',sector:''},
-  {id:'genesys',sym:'GENESYS',name:'GENESYS',exchange:'NSE',sector:''},
-  {id:'wonderla',sym:'WONDERLA',name:'WONDERLA',exchange:'NSE',sector:''},
-  {id:'tanla',sym:'TANLA',name:'TANLA',exchange:'NSE',sector:''},
-  {id:'tatatech',sym:'TATATECH',name:'TATATECH',exchange:'NSE',sector:''},
-  {id:'asahiindia',sym:'ASAHIINDIA',name:'ASAHIINDIA',exchange:'NSE',sector:''},
-  {id:'highene',sym:'HIGHENE',name:'HIGHENE',exchange:'BSE',sector:''},
-  {id:'jklakshmi',sym:'JKLAKSHMI',name:'JKLAKSHMI',exchange:'NSE',sector:''},
-  {id:'welcorp',sym:'WELCORP',name:'WELCORP',exchange:'NSE',sector:''},
-  {id:'titagarh',sym:'TITAGARH',name:'TITAGARH',exchange:'NSE',sector:''},
-  {id:'are_m',sym:'ARE&M',name:'ARE&M',exchange:'NSE',sector:''},
-  {id:'liquidbees',sym:'LIQUIDBEES',name:'LIQUIDBEES',exchange:'NSE',sector:''},
-  {id:'premierene',sym:'PREMIERENE',name:'PREMIERENE',exchange:'NSE',sector:''},
-  {id:'voltas',sym:'VOLTAS',name:'VOLTAS',exchange:'NSE',sector:''},
-  {id:'paras',sym:'PARAS',name:'PARAS',exchange:'NSE',sector:''},
-  {id:'mtartech',sym:'MTARTECH',name:'MTARTECH',exchange:'NSE',sector:''},
-  {id:'cdsl',sym:'CDSL',name:'CDSL',exchange:'NSE',sector:''},
-  {id:'cochinship',sym:'COCHINSHIP',name:'COCHINSHIP',exchange:'BSE',sector:''},
-  {id:'anup',sym:'ANUP',name:'ANUP',exchange:'NSE',sector:''},
-  {id:'grse',sym:'GRSE',name:'GRSE',exchange:'NSE',sector:''},
-  {id:'mazdock',sym:'MAZDOCK',name:'MAZDOCK',exchange:'NSE',sector:''},
-  {id:'siemens',sym:'SIEMENS',name:'SIEMENS',exchange:'NSE',sector:''},
-  {id:'mafatind',sym:'MAFATIND',name:'MAFATIND',exchange:'BSE',sector:''},
-  {id:'lt',sym:'LT',name:'LT',exchange:'NSE',sector:''},
-  {id:'dmart',sym:'DMART',name:'DMART',exchange:'NSE',sector:''},
-  {id:'zuari',sym:'ZUARI',name:'ZUARI',exchange:'BSE',sector:''},
-  {id:'hal',sym:'HAL',name:'HAL',exchange:'NSE',sector:''},
-  {id:'abb',sym:'ABB',name:'ABB',exchange:'NSE',sector:''},
-  {id:'aparinds',sym:'APARINDS',name:'APARINDS',exchange:'NSE',sector:''},
-  {id:'voltamp',sym:'VOLTAMP',name:'VOLTAMP',exchange:'NSE',sector:''},
-  // ── NIFTY 50 / LARGE CAP ──────────────────────────────────
-  {id:'reliance',sym:'RELIANCE',name:'Reliance Industries',exchange:'NSE',sector:'Energy'},
-  {id:'tcs_nse',sym:'TCS',name:'Tata Consultancy Services',exchange:'NSE',sector:'IT'},
-  {id:'hdfcbank_n',sym:'HDFCBANK',name:'HDFC Bank',exchange:'NSE',sector:'Banking'},
-  {id:'infy',sym:'INFY',name:'Infosys',exchange:'NSE',sector:'IT'},
-  {id:'icicibank',sym:'ICICIBANK',name:'ICICI Bank',exchange:'NSE',sector:'Banking'},
-  {id:'hindunilvr',sym:'HINDUNILVR',name:'Hindustan Unilever',exchange:'NSE',sector:'FMCG'},
-  {id:'bajfinance',sym:'BAJFINANCE',name:'Bajaj Finance',exchange:'NSE',sector:'NBFC'},
-  {id:'sbin',sym:'SBIN',name:'State Bank of India',exchange:'NSE',sector:'Banking'},
-  {id:'axisbank',sym:'AXISBANK',name:'Axis Bank',exchange:'NSE',sector:'Banking'},
-  {id:'kotakbank',sym:'KOTAKBANK',name:'Kotak Mahindra Bank',exchange:'NSE',sector:'Banking'},
-  {id:'lt_nse',sym:'LT',name:'Larsen & Toubro',exchange:'NSE',sector:'Infra'},
-  {id:'hcltech',sym:'HCLTECH',name:'HCL Technologies',exchange:'NSE',sector:'IT'},
-  {id:'wipro',sym:'WIPRO',name:'Wipro',exchange:'NSE',sector:'IT'},
-  {id:'asianpaint',sym:'ASIANPAINT',name:'Asian Paints',exchange:'NSE',sector:'Consumer'},
-  {id:'maruti',sym:'MARUTI',name:'Maruti Suzuki',exchange:'NSE',sector:'Auto'},
-  {id:'bajajfinsv',sym:'BAJAJFINSV',name:'Bajaj Finserv',exchange:'NSE',sector:'NBFC'},
-  {id:'titan',sym:'TITAN',name:'Titan Company',exchange:'NSE',sector:'Consumer'},
-  {id:'sunpharma',sym:'SUNPHARMA',name:'Sun Pharma',exchange:'NSE',sector:'Pharma'},
-  {id:'tatasteel_n',sym:'TATASTEEL',name:'Tata Steel',exchange:'NSE',sector:'Metals'},
-  {id:'ntpc',sym:'NTPC',name:'NTPC',exchange:'NSE',sector:'Energy'},
-  {id:'powergrid',sym:'POWERGRID',name:'Power Grid Corp',exchange:'NSE',sector:'Energy'},
-  {id:'ongc',sym:'ONGC',name:'ONGC',exchange:'NSE',sector:'Energy'},
-  {id:'coalindia',sym:'COALINDIA',name:'Coal India',exchange:'NSE',sector:'Metals'},
-  {id:'jswsteel',sym:'JSWSTEEL',name:'JSW Steel',exchange:'NSE',sector:'Metals'},
-  {id:'tatamotors',sym:'TATAMOTORS',name:'Tata Motors',exchange:'NSE',sector:'Auto'},
-  {id:'ultracemco',sym:'ULTRACEMCO',name:'UltraTech Cement',exchange:'NSE',sector:'Cement'},
-  {id:'adaniports_n',sym:'ADANIPORTS',name:'Adani Ports',exchange:'NSE',sector:'Infra'},
-  {id:'adanient_n',sym:'ADANIENT',name:'Adani Enterprises',exchange:'NSE',sector:'Infra'},
-  {id:'grasim',sym:'GRASIM',name:'Grasim Industries',exchange:'NSE',sector:'Cement'},
-  {id:'indusindbk_n',sym:'INDUSINDBK',name:'IndusInd Bank',exchange:'NSE',sector:'Banking'},
-  {id:'drreddy',sym:'DRREDDY',name:"Dr Reddy's Labs",exchange:'NSE',sector:'Pharma'},
-  {id:'cipla',sym:'CIPLA',name:'Cipla',exchange:'NSE',sector:'Pharma'},
-  {id:'hdfclife',sym:'HDFCLIFE',name:'HDFC Life Insurance',exchange:'NSE',sector:'Insurance'},
-  {id:'sbilife',sym:'SBILIFE',name:'SBI Life Insurance',exchange:'NSE',sector:'Insurance'},
-  {id:'techm',sym:'TECHM',name:'Tech Mahindra',exchange:'NSE',sector:'IT'},
-  {id:'nestleind',sym:'NESTLEIND',name:'Nestle India',exchange:'NSE',sector:'FMCG'},
-  {id:'britannia',sym:'BRITANNIA',name:'Britannia Industries',exchange:'NSE',sector:'FMCG'},
-  {id:'heromotoco_n',sym:'HEROMOTOCO',name:'Hero MotoCorp',exchange:'NSE',sector:'Auto'},
-  {id:'eichermot',sym:'EICHERMOT',name:'Eicher Motors',exchange:'NSE',sector:'Auto'},
-  {id:'bajaj_auto',sym:'BAJAJ-AUTO',name:'Bajaj Auto',exchange:'NSE',sector:'Auto'},
-  {id:'apollohosp',sym:'APOLLOHOSP',name:'Apollo Hospitals',exchange:'NSE',sector:'Healthcare'},
-  {id:'trent',sym:'TRENT',name:'Trent',exchange:'NSE',sector:'Consumer'},
-  {id:'hindalco_n',sym:'HINDALCO',name:'Hindalco Industries',exchange:'NSE',sector:'Metals'},
-  {id:'bpcl',sym:'BPCL',name:'BPCL',exchange:'NSE',sector:'Energy'},
-  {id:'ioc',sym:'IOC',name:'Indian Oil Corp',exchange:'NSE',sector:'Energy'},
-  {id:'hindpetro',sym:'HINDPETRO',name:'Hindustan Petroleum',exchange:'NSE',sector:'Energy'},
-  {id:'gail_n',sym:'GAIL',name:'GAIL India',exchange:'NSE',sector:'Energy'},
-  {id:'shreecem',sym:'SHREECEM',name:'Shree Cement',exchange:'NSE',sector:'Cement'},
-  {id:'acc_n',sym:'ACC',name:'ACC Cement',exchange:'NSE',sector:'Cement'},
-  // ── Banking & Finance ─────────────────────────────────────
-  {id:'pnb',sym:'PNB',name:'Punjab National Bank',exchange:'NSE',sector:'Banking'},
-  {id:'bankbaroda',sym:'BANKBARODA',name:'Bank of Baroda',exchange:'NSE',sector:'Banking'},
-  {id:'canbk_n',sym:'CANBK',name:'Canara Bank',exchange:'NSE',sector:'Banking'},
-  {id:'unionbank',sym:'UNIONBANK',name:'Union Bank of India',exchange:'NSE',sector:'Banking'},
-  {id:'idfcfirstb_n',sym:'IDFCFIRSTB',name:'IDFC First Bank',exchange:'NSE',sector:'Banking'},
-  {id:'federalbnk',sym:'FEDERALBNK',name:'Federal Bank',exchange:'NSE',sector:'Banking'},
-  {id:'rblbank',sym:'RBLBANK',name:'RBL Bank',exchange:'NSE',sector:'Banking'},
-  {id:'aubank',sym:'AUBANK',name:'AU Small Finance Bank',exchange:'NSE',sector:'Banking'},
-  {id:'idbi',sym:'IDBI',name:'IDBI Bank',exchange:'NSE',sector:'Banking'},
-  {id:'ucobank_n',sym:'UCOBANK',name:'UCO Bank',exchange:'NSE',sector:'Banking'},
-  {id:'mahabank',sym:'MAHABANK',name:'Bank of Maharashtra',exchange:'NSE',sector:'Banking'},
-  {id:'cholafin',sym:'CHOLAFIN',name:'Cholamandalam Finance',exchange:'NSE',sector:'NBFC'},
-  {id:'muthootfin',sym:'MUTHOOTFIN',name:'Muthoot Finance',exchange:'NSE',sector:'NBFC'},
-  {id:'manappuram',sym:'MANAPPURAM',name:'Manappuram Finance',exchange:'NSE',sector:'NBFC'},
-  {id:'hdfcamc_n',sym:'HDFCAMC',name:'HDFC AMC',exchange:'NSE',sector:'Finance'},
-  {id:'angelone',sym:'ANGELONE',name:'Angel One',exchange:'NSE',sector:'Finance'},
-  {id:'icicigi',sym:'ICICIGI',name:'ICICI General Insurance',exchange:'NSE',sector:'Insurance'},
-  {id:'lici',sym:'LICI',name:'LIC of India',exchange:'NSE',sector:'Insurance'},
-  {id:'jiofin',sym:'JIOFIN',name:'Jio Financial Services',exchange:'NSE',sector:'Finance'},
-  {id:'cdsl_n',sym:'CDSL',name:'CDSL',exchange:'NSE',sector:'Finance'},
-  {id:'bse_stock',sym:'BSE',name:'BSE Ltd',exchange:'NSE',sector:'Finance'},
-  {id:'crisil',sym:'CRISIL',name:'CRISIL',exchange:'NSE',sector:'Finance'},
-  {id:'360one',sym:'360ONE',name:'360 One WAM',exchange:'NSE',sector:'Finance'},
-  {id:'iex_n',sym:'IEX',name:'Indian Energy Exchange',exchange:'NSE',sector:'Finance'},
-  {id:'shrirampps',sym:'SHRIRAMPPS',name:'Shriram Finance',exchange:'NSE',sector:'NBFC'},
-  {id:'sundarmfin',sym:'SUNDARMFIN',name:'Sundaram Finance',exchange:'NSE',sector:'NBFC'},
-  // ── IT / Tech ─────────────────────────────────────────────
-  {id:'ltim',sym:'LTIM',name:'LTIMindtree',exchange:'NSE',sector:'IT'},
-  {id:'mphasis',sym:'MPHASIS',name:'Mphasis',exchange:'NSE',sector:'IT'},
-  {id:'persistent',sym:'PERSISTENT',name:'Persistent Systems',exchange:'NSE',sector:'IT'},
-  {id:'coforge',sym:'COFORGE',name:'Coforge',exchange:'NSE',sector:'IT'},
-  {id:'kpittech_n',sym:'KPITTECH',name:'KPIT Technologies',exchange:'NSE',sector:'IT'},
-  {id:'naukri',sym:'NAUKRI',name:'Info Edge (Naukri)',exchange:'NSE',sector:'IT'},
-  {id:'tataelxsi',sym:'TATAELXSI',name:'Tata Elxsi',exchange:'NSE',sector:'IT'},
-  {id:'cyient',sym:'CYIENT',name:'Cyient',exchange:'NSE',sector:'IT'},
-  {id:'zomato',sym:'ZOMATO',name:'Zomato',exchange:'NSE',sector:'Consumer'},
-  {id:'nykaa',sym:'NYKAA',name:'Nykaa',exchange:'NSE',sector:'Consumer'},
-  // ── Pharma & Healthcare ───────────────────────────────────
-  {id:'divislab',sym:'DIVISLAB',name:"Divi's Laboratories",exchange:'NSE',sector:'Pharma'},
-  {id:'auropharma',sym:'AUROPHARMA',name:'Aurobindo Pharma',exchange:'NSE',sector:'Pharma'},
-  {id:'lupin',sym:'LUPIN',name:'Lupin',exchange:'NSE',sector:'Pharma'},
-  {id:'torntpharm',sym:'TORNTPHARM',name:'Torrent Pharma',exchange:'NSE',sector:'Pharma'},
-  {id:'alkem',sym:'ALKEM',name:'Alkem Laboratories',exchange:'NSE',sector:'Pharma'},
-  {id:'ipcalab',sym:'IPCALAB',name:'IPCA Laboratories',exchange:'NSE',sector:'Pharma'},
-  {id:'maxhealth',sym:'MAXHEALTH',name:'Max Healthcare',exchange:'NSE',sector:'Healthcare'},
-  // ── Auto ──────────────────────────────────────────────────
-  {id:'tvsmotor',sym:'TVSMOTOR',name:'TVS Motor',exchange:'NSE',sector:'Auto'},
-  {id:'mahindra',sym:'M&M',name:'Mahindra & Mahindra',exchange:'NSE',sector:'Auto'},
-  {id:'motherson_n',sym:'MOTHERSON',name:'Samvardhana Motherson',exchange:'NSE',sector:'Auto'},
-  {id:'mrf',sym:'MRF',name:'MRF',exchange:'NSE',sector:'Auto'},
-  {id:'apollotyre',sym:'APOLLOTYRE',name:'Apollo Tyres',exchange:'NSE',sector:'Auto'},
-  {id:'ceatltd',sym:'CEATLTD',name:'CEAT',exchange:'NSE',sector:'Auto'},
-  {id:'balkrisind',sym:'BALKRISIND',name:'Balkrishna Industries',exchange:'NSE',sector:'Auto'},
-  {id:'boschltd',sym:'BOSCHLTD',name:'Bosch',exchange:'NSE',sector:'Auto'},
-  // ── FMCG & Consumer ───────────────────────────────────────
-  {id:'dabur',sym:'DABUR',name:'Dabur India',exchange:'NSE',sector:'FMCG'},
-  {id:'marico',sym:'MARICO',name:'Marico',exchange:'NSE',sector:'FMCG'},
-  {id:'colpal',sym:'COLPAL',name:'Colgate-Palmolive',exchange:'NSE',sector:'FMCG'},
-  {id:'vbl',sym:'VBL',name:'Varun Beverages',exchange:'NSE',sector:'FMCG'},
-  {id:'tataconsum',sym:'TATACONSUM',name:'Tata Consumer Products',exchange:'NSE',sector:'FMCG'},
-  {id:'godrejcp',sym:'GODREJCP',name:'Godrej Consumer Products',exchange:'NSE',sector:'FMCG'},
-  {id:'dmart_n',sym:'DMART',name:'Avenue Supermarts (DMart)',exchange:'NSE',sector:'Retail'},
-  {id:'pidilitind',sym:'PIDILITIND',name:'Pidilite Industries',exchange:'NSE',sector:'Consumer'},
-  {id:'havells',sym:'HAVELLS',name:'Havells India',exchange:'NSE',sector:'Consumer'},
-  {id:'dixon',sym:'DIXON',name:'Dixon Technologies',exchange:'NSE',sector:'Consumer'},
-  // ── Energy ────────────────────────────────────────────────
-  {id:'adanigreen_n',sym:'ADANIGREEN',name:'Adani Green Energy',exchange:'NSE',sector:'Energy'},
-  {id:'adanipower_n',sym:'ADANIPOWER',name:'Adani Power',exchange:'NSE',sector:'Energy'},
-  {id:'tatapower_n',sym:'TATAPOWER',name:'Tata Power',exchange:'NSE',sector:'Energy'},
-  {id:'torntpower',sym:'TORNTPOWER',name:'Torrent Power',exchange:'NSE',sector:'Energy'},
-  {id:'igl',sym:'IGL',name:'Indraprastha Gas',exchange:'NSE',sector:'Energy'},
-  {id:'petronet',sym:'PETRONET',name:'Petronet LNG',exchange:'NSE',sector:'Energy'},
-  {id:'atgl',sym:'ATGL',name:'Adani Total Gas',exchange:'NSE',sector:'Energy'},
-  {id:'oil_india',sym:'OIL',name:'Oil India',exchange:'NSE',sector:'Energy'},
-  // ── Metals ────────────────────────────────────────────────
-  {id:'vedl_n',sym:'VEDL',name:'Vedanta',exchange:'NSE',sector:'Metals'},
-  {id:'hindzinc',sym:'HINDZINC',name:'Hindustan Zinc',exchange:'NSE',sector:'Metals'},
-  {id:'sail_n',sym:'SAIL',name:'SAIL',exchange:'NSE',sector:'Metals'},
-  // ── Infra & Realty ────────────────────────────────────────
-  {id:'dlf',sym:'DLF',name:'DLF',exchange:'NSE',sector:'Realty'},
-  {id:'godrejprop',sym:'GODREJPROP',name:'Godrej Properties',exchange:'NSE',sector:'Realty'},
-  {id:'prestige',sym:'PRESTIGE',name:'Prestige Estates',exchange:'NSE',sector:'Realty'},
-  {id:'irctc_n',sym:'IRCTC',name:'IRCTC',exchange:'NSE',sector:'Consumer'},
-  {id:'concor',sym:'CONCOR',name:'Container Corp',exchange:'NSE',sector:'Infra'},
-  // ── Defence ───────────────────────────────────────────────
-  {id:'hal_n',sym:'HAL',name:'Hindustan Aeronautics',exchange:'NSE',sector:'Defence'},
-  {id:'bhel_n',sym:'BHEL',name:'BHEL',exchange:'NSE',sector:'Defence'},
-  {id:'mazdock_n',sym:'MAZDOCK',name:'Mazagon Dock',exchange:'NSE',sector:'Defence'},
-  // ── Telecom & Media ───────────────────────────────────────
-  {id:'bhartiartl',sym:'BHARTIARTL',name:'Bharti Airtel',exchange:'NSE',sector:'Telecom'},
-  {id:'industower',sym:'INDUSTOWER',name:'Indus Towers',exchange:'NSE',sector:'Telecom'},
-  {id:'suntv',sym:'SUNTV',name:'Sun TV Network',exchange:'NSE',sector:'Media'},
-  {id:'pvrinox',sym:'PVRINOX',name:'PVR Inox',exchange:'NSE',sector:'Media'},
-  // ── Chemicals ─────────────────────────────────────────────
-  {id:'srf',sym:'SRF',name:'SRF',exchange:'NSE',sector:'Chemicals'},
-  {id:'deepakntr',sym:'DEEPAKNTR',name:'Deepak Nitrite',exchange:'NSE',sector:'Chemicals'},
-  {id:'piind',sym:'PIIND',name:'PI Industries',exchange:'NSE',sector:'Chemicals'},
-  {id:'tatachem',sym:'TATACHEM',name:'Tata Chemicals',exchange:'NSE',sector:'Chemicals'},
-  // ── EV & Renewables ───────────────────────────────────────
-  {id:'abb_n',sym:'ABB',name:'ABB India',exchange:'NSE',sector:'EV'},
-  {id:'siemens',sym:'SIEMENS',name:'Siemens India',exchange:'NSE',sector:'EV'},
+  {id:'reliance',   sym:'RELIANCE',   name:'Reliance Industries', sector:'Energy'},
+  {id:'tcs',        sym:'TCS',        name:'Tata Consultancy',    sector:'IT'},
+  {id:'hdfcbank',   sym:'HDFCBANK',   name:'HDFC Bank',           sector:'Banking'},
+  {id:'infosys',    sym:'INFY',       name:'Infosys Ltd',         sector:'IT'},
+  {id:'rategain',   sym:'RATEGAIN',   name:'RateGain Travel',     sector:'IT'},
+  {id:'olectra',    sym:'OLECTRA',    name:'Olectra Greentech',   sector:'EV'},
+  {id:'itc',        sym:'ITC',        name:'ITC Limited',         sector:'FMCG'},
+  {id:'bajfinance', sym:'BAJFINANCE', name:'Bajaj Finance',       sector:'NBFC'},
+  {id:'axisbank',   sym:'AXISBANK',   name:'Axis Bank',           sector:'Banking'},
+  {id:'wipro',      sym:'WIPRO',      name:'Wipro Ltd',           sector:'IT'},
+  {id:'sbi',        sym:'SBIN',       name:'State Bank of India', sector:'Banking'},
+  {id:'tatasteel',  sym:'TATASTEEL',  name:'Tata Steel',          sector:'Metals'},
+  {id:'hcltech',    sym:'HCLTECH',    name:'HCL Technologies',    sector:'IT'},
+  {id:'sunpharma',  sym:'SUNPHARMA',  name:'Sun Pharma',          sector:'Pharma'},
+  {id:'maruti',     sym:'MARUTI',     name:'Maruti Suzuki',       sector:'Auto'},
+  {id:'titan',      sym:'TITAN',      name:'Titan Company',       sector:'Consumer'},
 ];
 
 function fmt(n,d=2){return n==null?'—':Number(n).toLocaleString('en-IN',{minimumFractionDigits:d,maximumFractionDigits:d});}
@@ -1033,16 +526,16 @@ function fmtCr(n){if(!n)return'—';if(n>=1e12)return'₹'+(n/1e12).toFixed(2)+'
 // ═══════════════════════════════════════════════════════════
 function useLivePrices(ids) {
   const [prices, setPrices]   = useState({});
-  const [status, setStatus]   = useState('idle');
+  const [status, setStatus]   = useState('idle'); // idle | loading | ok | error
   const [lastUpdated, setLastUpdated] = useState(null);
   const [countdown, setCountdown] = useState(REFRESH_INTERVAL);
   const [proxyUrl, setProxyUrl] = useState(PROXY_URL);
   const timerRef = useRef(null);
   const countRef = useRef(null);
 
-  const fetchPrices = useCallback(async (overrideUrl) => {
+  const fetchPrices = useCallback(async (url) => {
     if (!ids.length) return;
-    const base = overrideUrl || proxyUrl;
+    const base = url || proxyUrl;
     setStatus('loading');
     try {
       const res = await fetch(`${base}/quotes?ids=${ids.join(',')}`);
@@ -1074,21 +567,6 @@ function useLivePrices(ids) {
   }, []);
 
   return { prices, status, lastUpdated, countdown, refresh: () => fetchPrices(), setProxyUrl };
-}
-
-// ═══════════════════════════════════════════════════════════
-// STOCK SEARCH — Pure local, starts-with only, zero API calls
-// ═══════════════════════════════════════════════════════════
-function useStockSearch(query, existingIds) {
-  const q = (query || '').trim().toLowerCase();
-  if (!q) return { results: [] };
-  const results = STOCKS_META.filter(o => {
-    if (existingIds.includes(o.id)) return false;
-    const sym  = (o.sym  || '').toLowerCase();
-    const name = (o.name || '').toLowerCase();
-    return sym.startsWith(q) || name.startsWith(q);
-  }).slice(0, 12);
-  return { results };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1175,11 +653,6 @@ const SECTOR_MAP = {
   'IT':'sec-IT','Banking':'sec-Banking','Energy':'sec-Energy',
   'EV':'sec-EV','FMCG':'sec-FMCG','NBFC':'sec-NBFC',
   'Metals':'sec-Metals','Pharma':'sec-Pharma','Auto':'sec-Auto','Consumer':'sec-Consumer',
-  'Telecom':'sec-Telecom','Insurance':'sec-Insurance','Finance':'sec-Finance',
-  'Healthcare':'sec-Healthcare','Infra':'sec-Infra','Realty':'sec-Realty',
-  'Cement':'sec-Cement','Chemicals':'sec-Chemicals','Textiles':'sec-Textiles',
-  'Media':'sec-Media','Defence':'sec-Defence','Logistics':'sec-Logistics',
-  'Retail':'sec-Retail','Agri':'sec-Agri',
 };
 const INDEX_EXCHANGE = {
   'nifty50':'NSE','banknifty':'NSE','finnifty':'NSE','midcap':'NSE','smallcap':'NSE','niftyit':'NSE',
@@ -1305,7 +778,7 @@ function DetailModal({item, p, onClose, isIndex, proxyUrl}) {
     setChartError(null);
     try {
       const r = RANGES.find(x=>x.range===range);
-      const base = localStorage.getItem('proxyUrl')||'http://localhost:3001';
+      const base = localStorage.getItem('proxyUrl')||'https://market-proxy-dop7.onrender.com';
       const res = await fetch(`${base}/chart?id=${item.id}&range=${r.range}&interval=${r.interval}`);
       if (!res.ok) throw new Error('Server error');
       const data = await res.json();
@@ -1526,24 +999,11 @@ function AddModal({title, allOptions, existing, onAdd, onClose, isPortfolio}) {
   const [buyPrice, setBuyPrice] = useState('');
   const [buyQty, setBuyQty] = useState('');
 
-  const existingIds = existing.map(e => e.id);
-  const isStock = allOptions === STOCKS_META; // distinguish stocks vs indices
-
-  // For indices: simple local filter. For stocks: use dynamic search hook.
-  const { results: dynamicResults, searching } = useStockSearch(
-    isStock ? search : '', existingIds
-  );
-
-  const filtered = isStock
-    ? dynamicResults
-    : allOptions.filter(o => {
-        if (!search.trim()) return !existingIds.includes(o.id);
-        const q = search.trim().toLowerCase();
-        return !existingIds.includes(o.id) && (
-          (o.name||'').toLowerCase().startsWith(q) ||
-          (o.id||'').toLowerCase().startsWith(q)
-        );
-      });
+  const filtered = allOptions.filter(o => {
+    const s = (o.name||o.sym||o.id||'').toLowerCase();
+    const ss = (o.sym||'').toLowerCase();
+    return !existing.find(e=>e.id===o.id) && (s.includes(search.toLowerCase())||ss.includes(search.toLowerCase()));
+  });
 
   function doAdd() {
     if (!selected) return;
@@ -1564,31 +1024,16 @@ function AddModal({title, allOptions, existing, onAdd, onClose, isPortfolio}) {
         h('button', {className:'modal-close', onClick:onClose}, '✕')
       ),
       h('div', {style:{padding:'16px 18px 8px'}},
-      h('input', {
-        className:'add-input',
-        placeholder: isStock ? '🔍 Symbol ya naam type karo (e.g. INFY, Tata...)' : '🔍 Search index...',
-        value:search,
-        onChange:e=>{ setSearch(e.target.value); setSelected(null); },
-        autoFocus:true
-      }),
+      h('input', {className:'add-input', placeholder:'Search...', value:search, onChange:e=>setSearch(e.target.value), autoFocus:true}),
       search.length > 0 && h('div', {className:'search-results'},
-        searching && filtered.length === 0
-          ? h('div', {className:'search-item', style:{color:'var(--text2)'}}, '🔍 Searching...')
-          : filtered.length === 0
-            ? h('div', {className:'search-item', style:{color:'var(--text2)'}}, 'No results — proxy connected che?')
-            : filtered.map(o =>
-                h('div', {key:o.id||o.sym, className:'search-item '+(selected?.id===o.id?'sel':''),
-                  onClick:()=>{ setSelected(o); setSearch(o.sym||o.name||o.id); }
-                },
-                  h('span', null,
-                    h('b', null, o.sym||o.id.toUpperCase()),
-                    ' — ',
-                    o.name||o.desc||'',
-                    o.exchange ? h('span', {style:{fontSize:10,color:'var(--text3)',marginLeft:6}}, o.exchange) : null,
-                    o.sector  ? h('span', {className:'sector-badge '+(SECTOR_MAP[o.sector]||''), style:{marginLeft:6}}, o.sector) : null
-                  )
-                )
+        filtered.length === 0
+          ? h('div', {className:'search-item', style:{color:'var(--text2)'}}, 'No results')
+          : filtered.slice(0,8).map(o =>
+              h('div', {key:o.id, className:'search-item '+(selected?.id===o.id?'sel':''),
+                onClick:()=>{setSelected(o); setSearch(o.sym||o.name||o.id);}},
+                h('b', null, o.sym||o.id.toUpperCase()), ' — ', o.name||o.desc||''
               )
+            )
       ),
       selected && isPortfolio && h('div', null,
         h('input', {className:'add-input', type:'date', value:buyDate, onChange:e=>setBuyDate(e.target.value)}),
@@ -1721,7 +1166,7 @@ function App() {
   const [passcodeEnabled, setPasscodeEnabled] = useState(() => !!localStorage.getItem('passcode'));
   const [passcode, setPasscode] = useState(() => localStorage.getItem('passcode')||'1234');
   const [locked, setLocked] = useState(() => !!localStorage.getItem('passcode'));
-  const [proxyUrlInput, setProxyUrlInput] = useState(() => localStorage.getItem('proxyUrl')||'http://localhost:3001');
+  const [proxyUrlInput, setProxyUrlInput] = useState(() => localStorage.getItem('proxyUrl')||'https://market-proxy-dop7.onrender.com');
 
   const [indices,   setIndices]   = useState(() => { try{return JSON.parse(localStorage.getItem('indices'))||INDICES_META.slice(0,5)}catch{return INDICES_META.slice(0,5)} });
   const [watchlist, setWatchlist] = useState(() => { try{return JSON.parse(localStorage.getItem('watchlist'))||[STOCKS_META[0],STOCKS_META[3],STOCKS_META[4],STOCKS_META[5]]}catch{return [STOCKS_META[0],STOCKS_META[3],STOCKS_META[4],STOCKS_META[5]]} });
@@ -1784,14 +1229,14 @@ function App() {
   // ── Indices Tab
   function IndicesTab() {
     const filtered = idxSearch
-      ? indices.filter(x => { const q=idxSearch.toLowerCase(); return x.name.toLowerCase().startsWith(q) || x.desc.toLowerCase().startsWith(q); })
+      ? indices.filter(x => x.name.toLowerCase().includes(idxSearch.toLowerCase()) || x.desc.toLowerCase().includes(idxSearch.toLowerCase()))
       : indices;
     const sorted = applyFilter(filtered, indices, prices, idxFilter);
     const suggestions = idxSearch.length > 0
-      ? INDICES_META.filter(x => {
-          const q = idxSearch.toLowerCase();
-          return !indices.find(i=>i.id===x.id) && (x.name.toLowerCase().startsWith(q) || x.desc.toLowerCase().startsWith(q));
-        })
+      ? INDICES_META.filter(x =>
+          !indices.find(i=>i.id===x.id) &&
+          (x.name.toLowerCase().includes(idxSearch.toLowerCase()) || x.desc.toLowerCase().includes(idxSearch.toLowerCase()))
+        )
       : [];
     return h('div', null,
       h(RefreshBar, {status, lastUpdated, countdown, onRefresh:refresh}),
@@ -1816,35 +1261,25 @@ function App() {
   // ── Watchlist Tab
   function WatchlistTab() {
     const filtered = wlSearch
-      ? watchlist.filter(x => {
-          const q = wlSearch.toLowerCase();
-          const sym  = (x.sym||'').toLowerCase();
-          const name = (x.name||'').toLowerCase();
-          return sym.startsWith(q) || name.startsWith(q);
-        })
+      ? watchlist.filter(x => x.name.toLowerCase().includes(wlSearch.toLowerCase()) || (x.sym||'').toLowerCase().includes(wlSearch.toLowerCase()) || (x.sector||'').toLowerCase().includes(wlSearch.toLowerCase()))
       : watchlist;
     const sorted = applyFilter(filtered, watchlist, prices, wlFilter);
-    const wlExistingIds = watchlist.map(x => x.id);
-    const { results: wlDynResults, searching: wlSearching } = useStockSearch(wlSearch, wlExistingIds);
+    const suggestions = wlSearch.length > 0
+      ? STOCKS_META.filter(x =>
+          !watchlist.find(i=>i.id===x.id) &&
+          (x.name.toLowerCase().includes(wlSearch.toLowerCase()) || (x.sym||'').toLowerCase().includes(wlSearch.toLowerCase()) || (x.sector||'').toLowerCase().includes(wlSearch.toLowerCase()))
+        ).slice(0,5)
+      : [];
     return h('div', null,
       h(RefreshBar, {status, lastUpdated, countdown, onRefresh:refresh}),
       status==='error' && h('div', {className:'error-banner'}, '⚠ Proxy server offline che.'),
-      wlSearch.length > 0 && h('div', {className:'search-suggestions'},
-        wlSearching && wlDynResults.length === 0
-          ? h('div', {className:'search-suggestion-item', style:{color:'var(--text2)',fontFamily:'var(--mono)',fontSize:12}}, '🔍 Searching NSE/BSE...')
-          : wlDynResults.length === 0
-            ? h('div', {className:'search-suggestion-item', style:{color:'var(--text2)',fontFamily:'var(--mono)',fontSize:12}}, 'No results found')
-            : wlDynResults.map(s => h('div', {key:s.id||s.sym, className:'search-suggestion-item',
-                onClick:()=>{ setWatchlist(p=>[...p,s]); setWlSearch(''); }
-              },
-              h('span', null,
-                h('b',null,s.sym||s.id),
-                ' — ', s.name,
-                s.exchange ? h('span',{style:{fontSize:10,color:'var(--text3)',marginLeft:5}},s.exchange) : null,
-                s.sector   ? h('span',{className:'sector-badge '+(SECTOR_MAP[s.sector]||''),style:{marginLeft:5}},s.sector) : null
-              ),
-              h('span', {className:'suggestion-add'}, '+ Add')
-            ))
+      suggestions.length > 0 && h('div', {className:'search-suggestions'},
+        suggestions.map(s => h('div', {key:s.id, className:'search-suggestion-item',
+          onClick:()=>{ setWatchlist(p=>[...p,s]); setWlSearch(''); }
+        },
+          h('span', null, h('b',null,s.sym), ' — ', s.name),
+          h('span', {className:'suggestion-add'}, '+ Add')
+        ))
       ),
       h(FilterBar, {active:wlFilter, onChange:setWlFilter}),
       !sorted.length && h('div',{className:'empty-state'},h('div',{className:'empty-icon'},'👁'),h('div',{className:'empty-text'},wlSearch?'No results':'Watchlist empty'),h('div',{className:'empty-sub'},wlSearch?'Upar suggestions joyo':'Search thi add karo')),
@@ -2004,24 +1439,26 @@ function App() {
       h('div', {className:'settings-section'},
         h('div', {className:'settings-title'}, 'Live Data — Proxy Server'),
         h('div', {className:'settings-row', style:{flexDirection:'column',alignItems:'flex-start',gap:8}},
-          h('div', {style:{display:'flex',width:'100%',justifyContent:'space-between',alignItems:'center'}},
-            h('div', {className:'settings-row-label'}, 'Proxy URL'),
-            h('span', {style:{fontSize:11,fontFamily:'var(--mono)',color:status==='ok'?'var(--green)':status==='error'?'var(--red)':'var(--text2)'}},
-              status==='ok'?'● Live':status==='error'?'● Offline':status==='loading'?'● ...':'● —'
+          h('div', {className:'settings-row-label'}, 'Proxy URL'),
+          h('div', {style:{display:'flex',gap:8,width:'100%',alignItems:'center'}},
+            h('div', {style:{
+              flex:1, background:'var(--bg3)', border:'1px solid var(--border)',
+              borderRadius:'var(--radius-xs)', padding:'9px 11px',
+              fontSize:11, fontFamily:'var(--mono)', color:'var(--text2)',
+              wordBreak:'break-all', lineHeight:1.4
+            }}, proxyUrlInput || 'Not set'),
+            h('span', {style:{fontSize:11,fontFamily:'var(--mono)',whiteSpace:'nowrap',color:status==='ok'?'var(--green)':status==='error'?'var(--red)':'var(--text2)'}},
+              status==='ok'?'● Live' : status==='error'?'● Offline' : status==='loading'?'● ...':'● —'
             )
-          ),
-          h('div', {style:{width:'100%',background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--radius-xs)',padding:'9px 11px',fontSize:11,fontFamily:'var(--mono)',color:'var(--text2)',wordBreak:'break-all'}},
-            proxyUrlInput || 'Not set'
           ),
           h('button', {
             style:{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:'var(--radius-xs)',padding:'7px 14px',fontSize:12,cursor:'pointer',fontFamily:'var(--font)',width:'100%'},
             onClick:()=>{
-              const newUrl = prompt('Proxy URL enter karo:\n(Browser: http://localhost:3001)\n(Mobile/Render: https://yourapp.onrender.com)', proxyUrlInput);
+              const newUrl = prompt('Proxy URL enter karo:', proxyUrlInput);
               if (newUrl !== null && newUrl.trim()) {
-                const u = newUrl.trim();
-                setProxyUrlInput(u);
-                localStorage.setItem('proxyUrl', u);
-                setProxyUrl(u);
+                setProxyUrlInput(newUrl.trim());
+                localStorage.setItem('proxyUrl', newUrl.trim());
+                setProxyUrl(newUrl.trim());
                 setTimeout(refresh, 300);
               }
             }
@@ -2175,6 +1612,15 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(h(App,null));
+
+// Register Service Worker
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(reg => console.log('SW registered:', reg.scope))
+      .catch(err => console.log('SW error:', err));
+  });
+}
 </script>
 </body>
 </html>

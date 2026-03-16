@@ -217,7 +217,7 @@ const SYMBOL_MAP = {
   jiofin: 'JIOFIN.NS',
   exhicon: 'EXHICON.BO',
   shreeosfm: 'SHREEOSFM.NS',
-  20microns: '20MICRONS.BO',
+  '20microns': '20MICRONS.BO',
   mishtann: 'MISHTANN.BO',
   mhlxmiru: 'MHLXMIRU.BO',
   goodricke: 'GOODRICKE.BO',

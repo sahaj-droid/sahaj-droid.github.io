@@ -283,6 +283,52 @@ app.get('/chart', async (req, res) => {
   }
 });
 
-app.get('/', (req, res) => res.json({status:'ok', version:'2.4'}));
+// ── /search — Yahoo Finance autocomplete for any NSE/BSE stock
+app.get('/search', async (req, res) => {
+  try {
+    const q = (req.query.q || '').trim();
+    if (!q || q.length < 1) return res.json([]);
+
+    // Try both NSE (.NS) and BSE (.BO) suffixed queries + plain symbol
+    const queries = [q + '.NS', q + '.BO', q];
+    const path = `/v1/finance/search?q=${encodeURIComponent(q)}&lang=en-US&region=IN&quotesCount=20&newsCount=0&listsCount=0&enableFuzzyQuery=false&enableCb=false&enableNavLinks=false&enableEnhancedTrivialQuery=true`;
+    const data = await fetchYahoo(path);
+
+    const quotes = data?.quotes || [];
+    // Filter to Indian exchange stocks only (NSE/BSE)
+    const indian = quotes.filter(q =>
+      q.exchange === 'NSI' || q.exchange === 'BSE' ||
+      (q.symbol && (q.symbol.endsWith('.NS') || q.symbol.endsWith('.BO')))
+    );
+
+    const results = indian.map(q => {
+      const rawSym = q.symbol || '';
+      // Generate a clean id from symbol
+      const sym = rawSym.replace(/\.(NS|BO)$/, '');
+      const exchange = rawSym.endsWith('.BO') ? 'BSE' : 'NSE';
+      const id = (sym + (exchange === 'BSE' ? '_bse' : '')).toLowerCase().replace(/[^a-z0-9_]/g,'_');
+      return {
+        id,
+        sym,
+        name: q.longname || q.shortname || sym,
+        sector: q.sector || '',
+        exchange,
+        yahooSym: rawSym,
+      };
+    });
+
+    // Also add to SYMBOL_MAP dynamically so /quotes works
+    results.forEach(r => {
+      if (!SYMBOL_MAP[r.id]) SYMBOL_MAP[r.id] = r.yahooSym;
+    });
+
+    res.json(results);
+  } catch(e) {
+    console.error('Search error:', e.message);
+    res.status(500).json({error: e.message});
+  }
+});
+
+
 const PORT = process.env.PORT||3001;
 app.listen(PORT, ()=>console.log(`Proxy v2.4 on port ${PORT}`));

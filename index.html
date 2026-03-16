@@ -485,10 +485,24 @@ const {useState,useEffect,useRef,useCallback}=React;
 const h=React.createElement;
 
 // ═══════════════════════════════════════════════════════════
-// CONFIG — After deploying backend, replace with your URL
+// CONFIG
 // ═══════════════════════════════════════════════════════════
-const PROXY_URL = localStorage.getItem('proxyUrl') || 'http://localhost:3001';
+const LOCAL_PROXY  = 'http://localhost:3001';
+const REMOTE_PROXY = localStorage.getItem('remoteProxyUrl') || '';
+const PROXY_URL    = localStorage.getItem('proxyUrl') || LOCAL_PROXY;
 const REFRESH_INTERVAL = 30; // seconds
+
+// Smart auto-detect: try local first, then remote
+async function detectWorkingProxy() {
+  const candidates = [LOCAL_PROXY, REMOTE_PROXY].filter(Boolean);
+  for (const url of candidates) {
+    try {
+      const r = await fetch(url + '/', {signal: AbortSignal.timeout(2500)});
+      if (r.ok) return url;
+    } catch(e) {}
+  }
+  return PROXY_URL;
+}
 
 // ═══════════════════════════════════════════════════════════
 // STATIC METADATA
@@ -848,16 +862,25 @@ function fmtCr(n){if(!n)return'—';if(n>=1e12)return'₹'+(n/1e12).toFixed(2)+'
 // ═══════════════════════════════════════════════════════════
 function useLivePrices(ids) {
   const [prices, setPrices]   = useState({});
-  const [status, setStatus]   = useState('idle'); // idle | loading | ok | error
+  const [status, setStatus]   = useState('idle');
   const [lastUpdated, setLastUpdated] = useState(null);
   const [countdown, setCountdown] = useState(REFRESH_INTERVAL);
   const [proxyUrl, setProxyUrl] = useState(PROXY_URL);
+  const [activeProxy, setActiveProxy] = useState(PROXY_URL);
   const timerRef = useRef(null);
   const countRef = useRef(null);
 
+  // Auto-detect best proxy on mount
+  useEffect(() => {
+    detectWorkingProxy().then(url => {
+      setActiveProxy(url);
+      localStorage.setItem('proxyUrl', url);
+    });
+  }, []);
+
   const fetchPrices = useCallback(async (url) => {
     if (!ids.length) return;
-    const base = url || proxyUrl;
+    const base = url || activeProxy || proxyUrl;
     setStatus('loading');
     try {
       const res = await fetch(`${base}/quotes?ids=${ids.join(',')}`);
@@ -870,9 +893,17 @@ function useLivePrices(ids) {
       setLastUpdated(new Date());
       setCountdown(REFRESH_INTERVAL);
     } catch(e) {
-      setStatus('error');
+      // On error, try to find another working proxy
+      if (!url) {
+        detectWorkingProxy().then(newUrl => {
+          if (newUrl !== activeProxy) { setActiveProxy(newUrl); fetchPrices(newUrl); }
+          else setStatus('error');
+        });
+      } else {
+        setStatus('error');
+      }
     }
-  }, [ids.join(','), proxyUrl]);
+  }, [ids.join(','), proxyUrl, activeProxy]);
 
   useEffect(() => {
     fetchPrices();
@@ -888,7 +919,59 @@ function useLivePrices(ids) {
     return () => clearInterval(countRef.current);
   }, []);
 
-  return { prices, status, lastUpdated, countdown, refresh: () => fetchPrices(), setProxyUrl };
+  return { prices, status, lastUpdated, countdown, refresh: () => fetchPrices(), setProxyUrl: (u) => { setProxyUrl(u); setActiveProxy(u); } };
+}
+
+// ═══════════════════════════════════════════════════════════
+// DYNAMIC STOCK SEARCH HOOK — searches ANY NSE/BSE listed stock
+// ═══════════════════════════════════════════════════════════
+function useStockSearch(query, existingIds) {
+  const [results, setResults]   = useState([]);
+  const [searching, setSearching] = useState(false);
+  const debounceRef = useRef(null);
+
+  useEffect(() => {
+    const q = (query || '').trim();
+    if (q.length < 1) { setResults([]); return; }
+
+    // First: instant local results from STOCKS_META (starts-with)
+    const local = STOCKS_META.filter(o => {
+      const sym  = (o.sym||'').toLowerCase();
+      const name = (o.name||'').toLowerCase();
+      return !existingIds.includes(o.id) && (sym.startsWith(q.toLowerCase()) || name.startsWith(q.toLowerCase()));
+    }).slice(0, 8);
+    setResults(local);
+
+    // Then: debounced remote search for any listed stock
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const base = localStorage.getItem('proxyUrl') || LOCAL_PROXY;
+        const res = await fetch(`${base}/search?q=${encodeURIComponent(q)}`);
+        if (!res.ok) throw new Error('Search failed');
+        const data = await res.json();
+        // Merge: remote results first (deduped), then local extras
+        const seen = new Set();
+        const merged = [];
+        [...data, ...local].forEach(item => {
+          const key = item.sym || item.id;
+          if (!seen.has(key) && !existingIds.includes(item.id)) {
+            seen.add(key);
+            merged.push(item);
+          }
+        });
+        setResults(merged.slice(0, 10));
+      } catch(e) {
+        // Keep local results on error
+      }
+      setSearching(false);
+    }, 350);
+
+    return () => clearTimeout(debounceRef.current);
+  }, [query, existingIds.join(',')]);
+
+  return { results, searching };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1326,11 +1409,24 @@ function AddModal({title, allOptions, existing, onAdd, onClose, isPortfolio}) {
   const [buyPrice, setBuyPrice] = useState('');
   const [buyQty, setBuyQty] = useState('');
 
-  const filtered = allOptions.filter(o => {
-    const s = (o.name||o.sym||o.id||'').toLowerCase();
-    const ss = (o.sym||'').toLowerCase();
-    return !existing.find(e=>e.id===o.id) && (s.includes(search.toLowerCase())||ss.includes(search.toLowerCase()));
-  });
+  const existingIds = existing.map(e => e.id);
+  const isStock = allOptions === STOCKS_META; // distinguish stocks vs indices
+
+  // For indices: simple local filter. For stocks: use dynamic search hook.
+  const { results: dynamicResults, searching } = useStockSearch(
+    isStock ? search : '', existingIds
+  );
+
+  const filtered = isStock
+    ? dynamicResults
+    : allOptions.filter(o => {
+        if (!search.trim()) return !existingIds.includes(o.id);
+        const q = search.trim().toLowerCase();
+        return !existingIds.includes(o.id) && (
+          (o.name||'').toLowerCase().startsWith(q) ||
+          (o.id||'').toLowerCase().startsWith(q)
+        );
+      });
 
   function doAdd() {
     if (!selected) return;
@@ -1351,16 +1447,31 @@ function AddModal({title, allOptions, existing, onAdd, onClose, isPortfolio}) {
         h('button', {className:'modal-close', onClick:onClose}, '✕')
       ),
       h('div', {style:{padding:'16px 18px 8px'}},
-      h('input', {className:'add-input', placeholder:'Search...', value:search, onChange:e=>setSearch(e.target.value), autoFocus:true}),
+      h('input', {
+        className:'add-input',
+        placeholder: isStock ? '🔍 Symbol ya naam type karo (e.g. INFY, Tata...)' : '🔍 Search index...',
+        value:search,
+        onChange:e=>{ setSearch(e.target.value); setSelected(null); },
+        autoFocus:true
+      }),
       search.length > 0 && h('div', {className:'search-results'},
-        filtered.length === 0
-          ? h('div', {className:'search-item', style:{color:'var(--text2)'}}, 'No results')
-          : filtered.slice(0,8).map(o =>
-              h('div', {key:o.id, className:'search-item '+(selected?.id===o.id?'sel':''),
-                onClick:()=>{setSelected(o); setSearch(o.sym||o.name||o.id);}},
-                h('b', null, o.sym||o.id.toUpperCase()), ' — ', o.name||o.desc||''
+        searching && filtered.length === 0
+          ? h('div', {className:'search-item', style:{color:'var(--text2)'}}, '🔍 Searching...')
+          : filtered.length === 0
+            ? h('div', {className:'search-item', style:{color:'var(--text2)'}}, 'No results — proxy connected che?')
+            : filtered.map(o =>
+                h('div', {key:o.id||o.sym, className:'search-item '+(selected?.id===o.id?'sel':''),
+                  onClick:()=>{ setSelected(o); setSearch(o.sym||o.name||o.id); }
+                },
+                  h('span', null,
+                    h('b', null, o.sym||o.id.toUpperCase()),
+                    ' — ',
+                    o.name||o.desc||'',
+                    o.exchange ? h('span', {style:{fontSize:10,color:'var(--text3)',marginLeft:6}}, o.exchange) : null,
+                    o.sector  ? h('span', {className:'sector-badge '+(SECTOR_MAP[o.sector]||''), style:{marginLeft:6}}, o.sector) : null
+                  )
+                )
               )
-            )
       ),
       selected && isPortfolio && h('div', null,
         h('input', {className:'add-input', type:'date', value:buyDate, onChange:e=>setBuyDate(e.target.value)}),
@@ -1560,10 +1671,10 @@ function App() {
       : indices;
     const sorted = applyFilter(filtered, indices, prices, idxFilter);
     const suggestions = idxSearch.length > 0
-      ? INDICES_META.filter(x =>
-          !indices.find(i=>i.id===x.id) &&
-          (x.name.toLowerCase().includes(idxSearch.toLowerCase()) || x.desc.toLowerCase().includes(idxSearch.toLowerCase()))
-        )
+      ? INDICES_META.filter(x => {
+          const q = idxSearch.toLowerCase();
+          return !indices.find(i=>i.id===x.id) && (x.name.toLowerCase().startsWith(q) || x.desc.toLowerCase().startsWith(q));
+        })
       : [];
     return h('div', null,
       h(RefreshBar, {status, lastUpdated, countdown, onRefresh:refresh}),
@@ -1588,25 +1699,35 @@ function App() {
   // ── Watchlist Tab
   function WatchlistTab() {
     const filtered = wlSearch
-      ? watchlist.filter(x => x.name.toLowerCase().includes(wlSearch.toLowerCase()) || (x.sym||'').toLowerCase().includes(wlSearch.toLowerCase()) || (x.sector||'').toLowerCase().includes(wlSearch.toLowerCase()))
+      ? watchlist.filter(x => {
+          const q = wlSearch.toLowerCase();
+          const sym  = (x.sym||'').toLowerCase();
+          const name = (x.name||'').toLowerCase();
+          return sym.startsWith(q) || name.startsWith(q);
+        })
       : watchlist;
     const sorted = applyFilter(filtered, watchlist, prices, wlFilter);
-    const suggestions = wlSearch.length > 0
-      ? STOCKS_META.filter(x =>
-          !watchlist.find(i=>i.id===x.id) &&
-          (x.name.toLowerCase().includes(wlSearch.toLowerCase()) || (x.sym||'').toLowerCase().includes(wlSearch.toLowerCase()) || (x.sector||'').toLowerCase().includes(wlSearch.toLowerCase()))
-        ).slice(0,5)
-      : [];
+    const wlExistingIds = watchlist.map(x => x.id);
+    const { results: wlDynResults, searching: wlSearching } = useStockSearch(wlSearch, wlExistingIds);
     return h('div', null,
       h(RefreshBar, {status, lastUpdated, countdown, onRefresh:refresh}),
       status==='error' && h('div', {className:'error-banner'}, '⚠ Proxy server offline che.'),
-      suggestions.length > 0 && h('div', {className:'search-suggestions'},
-        suggestions.map(s => h('div', {key:s.id, className:'search-suggestion-item',
-          onClick:()=>{ setWatchlist(p=>[...p,s]); setWlSearch(''); }
-        },
-          h('span', null, h('b',null,s.sym), ' — ', s.name),
-          h('span', {className:'suggestion-add'}, '+ Add')
-        ))
+      wlSearch.length > 0 && h('div', {className:'search-suggestions'},
+        wlSearching && wlDynResults.length === 0
+          ? h('div', {className:'search-suggestion-item', style:{color:'var(--text2)',fontFamily:'var(--mono)',fontSize:12}}, '🔍 Searching NSE/BSE...')
+          : wlDynResults.length === 0
+            ? h('div', {className:'search-suggestion-item', style:{color:'var(--text2)',fontFamily:'var(--mono)',fontSize:12}}, 'No results found')
+            : wlDynResults.map(s => h('div', {key:s.id||s.sym, className:'search-suggestion-item',
+                onClick:()=>{ setWatchlist(p=>[...p,s]); setWlSearch(''); }
+              },
+              h('span', null,
+                h('b',null,s.sym||s.id),
+                ' — ', s.name,
+                s.exchange ? h('span',{style:{fontSize:10,color:'var(--text3)',marginLeft:5}},s.exchange) : null,
+                s.sector   ? h('span',{className:'sector-badge '+(SECTOR_MAP[s.sector]||''),style:{marginLeft:5}},s.sector) : null
+              ),
+              h('span', {className:'suggestion-add'}, '+ Add')
+            ))
       ),
       h(FilterBar, {active:wlFilter, onChange:setWlFilter}),
       !sorted.length && h('div',{className:'empty-state'},h('div',{className:'empty-icon'},'👁'),h('div',{className:'empty-text'},wlSearch?'No results':'Watchlist empty'),h('div',{className:'empty-sub'},wlSearch?'Upar suggestions joyo':'Search thi add karo')),
@@ -1766,22 +1887,22 @@ function App() {
       h('div', {className:'settings-section'},
         h('div', {className:'settings-title'}, 'Live Data — Proxy Server'),
         h('div', {className:'settings-row', style:{flexDirection:'column',alignItems:'flex-start',gap:8}},
-          h('div', {className:'settings-row-label'}, 'Proxy URL'),
-          h('div', {style:{display:'flex',gap:8,width:'100%',alignItems:'center'}},
-            h('div', {style:{
-              flex:1, background:'var(--bg3)', border:'1px solid var(--border)',
-              borderRadius:'var(--radius-xs)', padding:'9px 11px',
-              fontSize:11, fontFamily:'var(--mono)', color:'var(--text2)',
-              wordBreak:'break-all', lineHeight:1.4
-            }}, proxyUrlInput || 'Not set'),
+          h('div', {style:{display:'flex',width:'100%',justifyContent:'space-between',alignItems:'center'}},
+            h('div', {className:'settings-row-label'}, 'Active Proxy'),
             h('span', {style:{fontSize:11,fontFamily:'var(--mono)',whiteSpace:'nowrap',color:status==='ok'?'var(--green)':status==='error'?'var(--red)':'var(--text2)'}},
               status==='ok'?'● Live' : status==='error'?'● Offline' : status==='loading'?'● ...':'● —'
             )
           ),
+          h('div', {style:{
+            width:'100%', background:'var(--bg3)', border:'1px solid var(--border)',
+            borderRadius:'var(--radius-xs)', padding:'9px 11px',
+            fontSize:11, fontFamily:'var(--mono)', color:'var(--text2)',
+            wordBreak:'break-all', lineHeight:1.4
+          }}, proxyUrlInput || 'Not set'),
           h('button', {
             style:{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:'var(--radius-xs)',padding:'7px 14px',fontSize:12,cursor:'pointer',fontFamily:'var(--font)',width:'100%'},
             onClick:()=>{
-              const newUrl = prompt('Proxy URL enter karo:', proxyUrlInput);
+              const newUrl = prompt('Browser/Local Proxy URL:', proxyUrlInput);
               if (newUrl !== null && newUrl.trim()) {
                 setProxyUrlInput(newUrl.trim());
                 localStorage.setItem('proxyUrl', newUrl.trim());
@@ -1789,7 +1910,35 @@ function App() {
                 setTimeout(refresh, 300);
               }
             }
-          }, '✏️ Change Proxy URL')
+          }, '✏️ Change Local/Browser Proxy URL')
+        ),
+        h('div', {className:'settings-row', style:{flexDirection:'column',alignItems:'flex-start',gap:8}},
+          h('div', {className:'settings-row-label'}, '📱 Remote Proxy URL (Mobile)'),
+          h('div', {className:'settings-row-sub'}, 'Mobile pe local proxy kaam nathi karta. Render/Railway deploy karo ane URL yahan set karo.'),
+          h('div', {style:{
+            width:'100%', background:'var(--bg3)', border:'1px solid var(--border)',
+            borderRadius:'var(--radius-xs)', padding:'9px 11px',
+            fontSize:11, fontFamily:'var(--mono)', color:'var(--text2)',
+            wordBreak:'break-all', lineHeight:1.4
+          }}, localStorage.getItem('remoteProxyUrl') || 'Not set'),
+          h('button', {
+            style:{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:'var(--radius-xs)',padding:'7px 14px',fontSize:12,cursor:'pointer',fontFamily:'var(--font)',width:'100%'},
+            onClick:()=>{
+              const cur = localStorage.getItem('remoteProxyUrl') || '';
+              const newUrl = prompt('Remote Proxy URL enter karo (e.g. https://myapp.onrender.com):', cur);
+              if (newUrl !== null) {
+                const trimmed = newUrl.trim();
+                localStorage.setItem('remoteProxyUrl', trimmed);
+                // If local fails, auto-switch to remote
+                detectWorkingProxy().then(url => {
+                  setProxyUrlInput(url);
+                  localStorage.setItem('proxyUrl', url);
+                  setProxyUrl(url);
+                  setTimeout(refresh, 300);
+                });
+              }
+            }
+          }, '✏️ Set Remote Proxy URL')
         ),
         h('div', {className:'settings-row'},
           h('div', null,

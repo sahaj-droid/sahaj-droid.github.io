@@ -1,2180 +1,586 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>MarketTracker</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<style>
-  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-  :root{
-    --bg:#080b10;--bg2:#0f1318;--bg3:#151c24;--card:#151c24;--border:#1e2736;
-    --text:#eef0f5;--text2:#7a8499;--text3:#3d4558;
-    --green:#00e5a0;--green-dim:rgba(0,229,160,0.12);
-    --red:#ff3d6b;--red-dim:rgba(255,61,107,0.12);
-    --blue:#3d8ef0;--blue-dim:rgba(61,142,240,0.15);--blue2:#2470d0;
-    --accent:#f5c842;--accent-dim:rgba(245,200,66,0.12);
-    --font:'Syne',sans-serif;--mono:'DM Mono',monospace;
-    --radius:14px;--radius-sm:9px;--radius-xs:6px;
-    --shadow:0 8px 32px rgba(0,0,0,0.4);
-  }
-  .light{
-    --bg:#f4f6fb;--bg2:#ffffff;--bg3:#edf0f7;--card:#ffffff;--border:#dde2ef;
-    --text:#111827;--text2:#5a6480;--text3:#aab0c4;
-    --green:#00b87a;--green-dim:rgba(0,184,122,0.1);
-    --red:#e0294a;--red-dim:rgba(224,41,74,0.1);
-    --blue:#1a6fd4;--blue-dim:rgba(26,111,212,0.1);--blue2:#0d55b0;
-    --shadow:0 4px 24px rgba(0,0,0,0.08);
-  }
-  body{
-    background:var(--bg);
-    color:var(--text);
-    font-family:var(--font);
-    min-height:100vh;
-    max-width:420px;
-    margin:0 auto;
-    overflow-x:hidden;
-    font-size:14px;
-  }
-  html.font-small  { font-size: 12px; }
-  html.font-medium { font-size: 14px; }
-  html.font-large  { font-size: 17px; }
-  html.font-small  .stock-name   { font-size: 12px !important; }
-  html.font-medium .stock-name   { font-size: 14px !important; }
-  html.font-large  .stock-name   { font-size: 17px !important; }
-  html.font-small  .stock-price  { font-size: 12px !important; }
-  html.font-medium .stock-price  { font-size: 15px !important; }
-  html.font-large  .stock-price  { font-size: 19px !important; }
-  html.font-small  .stock-sub, html.font-small .stock-change, html.font-small .price-pct { font-size: 10px !important; }
-  html.font-large  .stock-sub, html.font-large .stock-change, html.font-large .price-pct { font-size: 14px !important; }
-  html.font-small  .port-meta-val { font-size: 11px !important; }
-  html.font-large  .port-meta-val { font-size: 14px !important; }
-  html.font-small  .summary-big  { font-size: 20px !important; }
-  html.font-large  .summary-big  { font-size: 34px !important; }
-  .app{display:flex;flex-direction:column;min-height:100vh;}
+const express = require('express');
+const cors = require('cors');
+const https = require('https');
+const zlib = require('zlib');
 
-  /* ── Header ── */
-  .header{
-    background:var(--bg2);
-    border-bottom:1px solid var(--border);
-    padding:14px 18px 12px;
-    position:sticky;top:0;z-index:100;
-    backdrop-filter:blur(20px);
-    -webkit-backdrop-filter:blur(20px);
-  }
-  .header-row{display:flex;align-items:center;justify-content:space-between;}
-  .header-title{
-    font-size:18px;font-weight:800;letter-spacing:-0.5px;
-    background:linear-gradient(135deg,var(--text) 0%,var(--text2) 100%);
-    -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
-  }
-  .header-sub{font-size:11px;color:var(--text2);margin-top:3px;display:flex;align-items:center;gap:5px;font-family:var(--mono);}
-  .live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;animation:pulse 2s infinite;flex-shrink:0;box-shadow:0 0 6px var(--green);}
-  .live-dot.error{background:var(--red);animation:none;box-shadow:0 0 6px var(--red);}
-  .live-dot.loading{background:var(--accent);box-shadow:0 0 6px var(--accent);}
-  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.4;transform:scale(0.85)}}
+const app = express();
+app.use(cors());
 
-  .time-chip{
-    font-family:var(--mono);font-size:11px;color:var(--text2);
-    background:var(--bg3);padding:5px 11px;border-radius:20px;
-    border:1px solid var(--border);letter-spacing:0.3px;
-  }
+const SYMBOL_MAP = {
+  // ── Indices ──────────────────────────────────────────────
+  nifty50:'^NSEI', banknifty:'^NSEBANK', sensex:'^BSESN', bankex:'^BSEBANKEX',
+  finnifty:'NIFTY_FIN_SERVICE.NS', midcap:'^NSEMDCP50', smallcap:'NIFTYSMLCAP250.NS',
+  niftyit:'^CNXIT', niftypharma:'^CNXPHARMA', niftyauto:'^CNXAUTO',
+  niftymetal:'^CNXMETAL', niftyfmcg:'^CNXFMCG', niftyrealty:'^CNXREALTY',
+  niftyenergy:'^CNXENERGY', niftyinfra:'^CNXINFRA', niftypse:'^CNXPSE',
+  nifty100:'^CNX100', niftynext50:'^NSMIDCP', niftymidcap150:'NIFTYMIDCAP150.NS',
+  niftysmallcap100:'NIFTYSMLCAP100.NS', niftymedia:'^CNXMEDIA',
+  niftyconsumer:'^CNXCONSUM', niftyoil:'^CNXOILGAS',
+  niftydefence:'NIFTYDEFENCE.NS', niftypvtbank:'NIFTYPVTBANK.NS',
+  niftypsubank:'^CNXPSUBANK', niftymnc:'^CNXMNC',
+  sensex50:'BSE-SENSEX50.BO', bse100:'BSE-100.BO', bse200:'BSE-200.BO',
+  bse500:'BSE-500.BO', bsemidcap:'BSE-MID-CAP.BO', bsesmallcap:'BSE-SMLCAP.BO',
 
-  /* ── Content ── */
-  .content{flex:1;overflow-y:auto;padding-bottom:86px;}
+  // ── User Custom Stocks ───────────────────────────────────
+  reltd: 'RELTD.NS',
+  iciciamc: 'ICICIAMC.NS',
+  olectra: 'OLECTRA.NS',
+  kaynes: 'KAYNES.NS',
+  baluforge: 'BALUFORGE.NS',
+  subros: 'SUBROS.NS',
+  pwl: 'PWL.NS',
+  garuda: 'GARUDA.NS',
+  jwl: 'JWL.NS',
+  tennind: 'TENNIND.NS',
+  lemontree: 'LEMONTREE.NS',
+  shardacrop: 'SHARDACROP.NS',
+  bse: 'BSE.NS',
+  groww: 'GROWW.NS',
+  transraill: 'TRANSRAILL.NS',
+  hblengine: 'HBLENGINE.NS',
+  taril: 'TARIL.BO',
+  shaktipump: 'SHAKTIPUMP.NS',
+  waareeener: 'WAAREEENER.NS',
+  remsonsind: 'REMSONSIND.NS',
+  suryarosni: 'SURYAROSNI.NS',
+  vikran: 'VIKRAN.NS',
+  adaniensol: 'ADANIENSOL.NS',
+  adanipower: 'ADANIPOWER.NS',
+  ambujacem: 'AMBUJACEM.NS',
+  trident: 'TRIDENT.NS',
+  kprmill: 'KPRMILL.NS',
+  adanient: 'ADANIENT.NS',
+  adaniports: 'ADANIPORTS.NS',
+  krn: 'KRN.NS',
+  lgeindia: 'LGEINDIA.NS',
+  vedl: 'VEDL.NS',
+  cpplus: 'CPPLUS.NS',
+  eternal: 'ETERNAL.NS',
+  stylamind: 'STYLAMIND.NS',
+  sbin: 'SBIN.NS',
+  reliance: 'RELIANCE.NS',
+  texrail: 'TEXRAIL.NS',
+  waareertl: 'WAAREERTL.BO',
+  yatharth: 'YATHARTH.NS',
+  jindrill: 'JINDRILL.NS',
+  sandhar: 'SANDHAR.NS',
+  premexpln: 'PREMEXPLN.NS',
+  intlconv: 'INTLCONV.NS',
+  denta: 'DENTA.NS',
+  bhagyangr: 'BHAGYANGR.BO',
+  chennpetro: 'CHENNPETRO.NS',
+  hfcl: 'HFCL.NS',
+  tbz: 'TBZ.NS',
+  nmdc: 'NMDC.NS',
+  ellen: 'ELLEN.NS',
+  tdpowersys: 'TDPOWERSYS.NS',
+  lloydsengg: 'LLOYDSENGG.BO',
+  maithanall: 'MAITHANALL.BO',
+  iex: 'IEX.NS',
+  bancoindia: 'BANCOINDIA.NS',
+  recltd: 'RECLTD.NS',
+  jsll: 'JSLL.NS',
+  shilpamed: 'SHILPAMED.NS',
+  tatacap: 'TATACAP.NS',
+  ace: 'ACE.NS',
+  meesho: 'MEESHO.BO',
+  goldbees: 'GOLDBEES.NS',
+  goldetf: 'GOLDETF.NS',
+  aci: 'ACI.NS',
+  natcopharm: 'NATCOPHARM.NS',
+  urbanco: 'URBANCO.NS',
+  acmesolar: 'ACMESOLAR.NS',
+  lauruslabs: 'LAURUSLABS.NS',
+  nsdl: 'NSDL.BO',
+  acc: 'ACC.NS',
+  southwest: 'SOUTHWEST.BO',
+  igil: 'IGIL.NS',
+  gmdcltd: 'GMDCLTD.NS',
+  tmcv: 'TMCV.BO',
+  acgl: 'ACGL.BO',
+  tmpv: 'TMPV.NS',
+  unimech: 'UNIMECH.NS',
+  stovekraft: 'STOVEKRAFT.NS',
+  syrma: 'SYRMA.NS',
+  studds: 'STUDDS.NS',
+  chemcon: 'CHEMCON.NS',
+  lenskart: 'LENSKART.NS',
+  heg: 'HEG.BO',
+  tajgvk: 'TAJGVK.NS',
+  indotech: 'INDOTECH.NS',
+  mosmall250: 'MOSMALL250.NS',
+  ashokley: 'ASHOKLEY.NS',
+  chalet: 'CHALET.NS',
+  mahepc: 'MAHEPC.NS',
+  elecon: 'ELECON.NS',
+  hdbfs: 'HDBFS.NS',
+  vikramsolr: 'VIKRAMSOLR.NS',
+  greavescot: 'GREAVESCOT.NS',
+  hondapower: 'HONDAPOWER.NS',
+  globecivil: 'GLOBECIVIL.NS',
+  arvsmart: 'ARVSMART.NS',
+  sci: 'SCI.NS',
+  moschip: 'MOSCHIP.NS',
+  veljan: 'VELJAN.BO',
+  micel: 'MICEL.BO',
+  shaily: 'SHAILY.NS',
+  ipl: 'IPL.NS',
+  mazda: 'MAZDA.NS',
+  bodalchem: 'BODALCHEM.NS',
+  genuspower: 'GENUSPOWER.NS',
+  smallcap: 'SMALLCAP.NS',
+  eiel: 'EIEL.NS',
+  gujaratpoly: 'GUJARATPOLY.BO',
+  mkexim: 'MKEXIM.BO',
+  rohltd: 'ROHLTD.NS',
+  ratnaveer: 'RATNAVEER.NS',
+  omaxauto: 'OMAXAUTO.BO',
+  tatasteel: 'TATASTEEL.BO',
+  meil: 'MEIL.NS',
+  atulauto: 'ATULAUTO.NS',
+  basilic: 'BASILIC.NS',
+  inoxindia: 'INOXINDIA.NS',
+  bluejet: 'BLUEJET.BO',
+  patanjali: 'PATANJALI.NS',
+  powermech: 'POWERMECH.NS',
+  motherson: 'MOTHERSON.BO',
+  hdfcamc: 'HDFCAMC.NS',
+  jswcement: 'JSWCEMENT.BO',
+  hdfcbank: 'HDFCBANK.BO',
+  paisalo: 'PAISALO.BO',
+  cupid: 'CUPID.BO',
+  igarashi: 'IGARASHI.NS',
+  supriya: 'SUPRIYA.NS',
+  kirlosbros: 'KIRLOSBROS.NS',
+  bondada: 'BONDADA.BO',
+  nile: 'NILE.BO',
+  veto: 'VETO.NS',
+  zentec: 'ZENTEC.NS',
+  kpigreen: 'KPIGREEN.BO',
+  simmond: 'SIMMOND.BO',
+  technoe: 'TECHNOE.NS',
+  icicibank: 'ICICIBANK.NS',
+  imagicaa: 'IMAGICAA.NS',
+  bluestarco: 'BLUESTARCO.NS',
+  datapattns: 'DATAPATTNS.NS',
+  schneider: 'SCHNEIDER.BO',
+  castrolind: 'CASTROLIND.NS',
+  avantel: 'AVANTEL.NS',
+  polyplex: 'POLYPLEX.NS',
+  sailife: 'SAILIFE.NS',
+  sail: 'SAIL.NS',
+  hyundai: 'HYUNDAI.NS',
+  rtnindia: 'RTNINDIA.BO',
+  jbma: 'JBMA.NS',
+  alembicltd: 'ALEMBICLTD.NS',
+  univastu: 'UNIVASTU.NS',
+  aeroenter: 'AEROENTER.NS',
+  mrpl: 'MRPL.NS',
+  refex: 'REFEX.NS',
+  indofarm: 'INDOFARM.BO',
+  multibase: 'MULTIBASE.BO',
+  madrasfert: 'MADRASFERT.NS',
+  greenply: 'GREENPLY.NS',
+  hscl: 'HSCL.NS',
+  bajfinance: 'BAJFINANCE.NS',
+  mircelectr: 'MIRCELECTR.BO',
+  bpl: 'BPL.BO',
+  suzlon: 'SUZLON.NS',
+  zensartech: 'ZENSARTECH.NS',
+  ircon: 'IRCON.NS',
+  silverbees: 'SILVERBEES.NS',
+  varroc: 'VARROC.NS',
+  indusindbk: 'INDUSINDBK.BO',
+  integraen: 'INTEGRAEN.BO',
+  jindworld: 'JINDWORLD.NS',
+  olaelec: 'OLAELEC.BO',
+  kecl: 'KECL.NS',
+  electcast: 'ELECTCAST.NS',
+  paytm: 'PAYTM.NS',
+  titan: 'TITAN.NS',
+  anthem: 'ANTHEM.NS',
+  transworld: 'TRANSWORLD.NS',
+  jktyre: 'JKTYRE.NS',
+  infy: 'INFY.NS',
+  moil: 'MOIL.NS',
+  sudarschem: 'SUDARSCHEM.NS',
+  forcemot: 'FORCEMOT.NS',
+  godfryphlp: 'GODFRYPHLP.NS',
+  itc: 'ITC.NS',
+  ekc: 'EKC.NS',
+  tcs: 'TCS.BO',
+  dcmsrind: 'DCMSRIND.NS',
+  atgl: 'ATGL.NS',
+  rategain: 'RATEGAIN.NS',
+  kec: 'KEC.NS',
+  tanaa: 'TANAA.BO',
+  jiofin: 'JIOFIN.NS',
+  exhicon: 'EXHICON.BO',
+  shreeosfm: 'SHREEOSFM.NS',
+  20microns: '20MICRONS.BO',
+  mishtann: 'MISHTANN.BO',
+  mhlxmiru: 'MHLXMIRU.BO',
+  goodricke: 'GOODRICKE.BO',
+  stardelta: 'STARDELTA.BO',
+  jtlind: 'JTLIND.NS',
+  pancarbon: 'PANCARBON.BO',
+  rexnord: 'REXNORD.BO',
+  somiconvey: 'SOMICONVEY.NS',
+  pixtrans: 'PIXTRANS.NS',
+  globoffs: 'GLOBOFFS.BO',
+  swissmltry: 'SWISSMLTRY.BO',
+  rdbrl: 'RDBRL.BO',
+  chamblfert: 'CHAMBLFERT.NS',
+  mmfl: 'MMFL.NS',
+  cewater: 'CEWATER.NS',
+  vmm: 'VMM.NS',
+  scilal: 'SCILAL.BO',
+  irctc: 'IRCTC.NS',
+  heranba: 'HERANBA.NS',
+  nbcc: 'NBCC.NS',
+  heromotoco: 'HEROMOTOCO.NS',
+  idea: 'IDEA.NS',
+  ifci: 'IFCI.NS',
+  lici: 'LICI.BO',
+  hindzinc: 'HINDZINC.NS',
+  hindcopper: 'HINDCOPPER.NS',
+  hindalco: 'HINDALCO.BO',
+  hindoilexp: 'HINDOILEXP.NS',
+  nationalum: 'NATIONALUM.NS',
+  swsolar: 'SWSOLAR.NS',
+  efcil: 'EFCIL.BO',
+  ireda: 'IREDA.NS',
+  bajaj_auto: 'BAJAJ-AUTO.BO',
+  bajajhcare: 'BAJAJHCARE.NS',
+  symphony: 'SYMPHONY.NS',
+  iolcp: 'IOLCP.NS',
+  shilgravq: 'SHILGRAVQ.BO',
+  tejasnet: 'TEJASNET.BO',
+  jkpaper: 'JKPAPER.BO',
+  ucobank: 'UCOBANK.BO',
+  stallion: 'STALLION.BO',
+  styrenix: 'STYRENIX.NS',
+  mcel: 'MCEL.BO',
+  lichsgfin: 'LICHSGFIN.BO',
+  pfc: 'PFC.BO',
+  zaggle: 'ZAGGLE.NS',
+  kirlpnu: 'KIRLPNU.NS',
+  isgec: 'ISGEC.NS',
+  gna: 'GNA.NS',
+  donear: 'DONEAR.NS',
+  belrise: 'BELRISE.NS',
+  tatainvest: 'TATAINVEST.BO',
+  pgfoilq: 'PGFOILQ.BO',
+  aeroflex: 'AEROFLEX.NS',
+  adanigreen: 'ADANIGREEN.BO',
+  smlmah: 'SMLMAH.BO',
+  elprointl: 'ELPROINTL.BO',
+  cninfotech: 'CNINFOTECH.BO',
+  geship: 'GESHIP.NS',
+  renuka: 'RENUKA.BO',
+  irb: 'IRB.NS',
+  morepenlab: 'MOREPENLAB.NS',
+  nhpc: 'NHPC.NS',
+  idfcfirstb: 'IDFCFIRSTB.BO',
+  idbi: 'IDBI.NS',
+  shrirampps: 'SHRIRAMPPS.NS',
+  sjvn: 'SJVN.NS',
+  dolatalgo: 'DOLATALGO.NS',
+  ntpcgreen: 'NTPCGREEN.NS',
+  canbk: 'CANBK.NS',
+  bajajhfl: 'BAJAJHFL.BO',
+  yesbank: 'YESBANK.NS',
+  irfc: 'IRFC.NS',
+  zeel: 'ZEEL.NS',
+  ioc: 'IOC.NS',
+  gppl: 'GPPL.NS',
+  mufti: 'MUFTI.NS',
+  vprpl: 'VPRPL.NS',
+  inoxwind: 'INOXWIND.BO',
+  arisinfra: 'ARISINFRA.NS',
+  gail: 'GAIL.NS',
+  exicom: 'EXICOM.NS',
+  lxchem: 'LXCHEM.NS',
+  balmlawrie: 'BALMLAWRIE.NS',
+  ikio: 'IKIO.NS',
+  vipulorg: 'VIPULORG.BO',
+  enginersin: 'ENGINERSIN.NS',
+  bankbaroda: 'BANKBARODA.NS',
+  ongc: 'ONGC.NS',
+  bhel: 'BHEL.NS',
+  dcxindia: 'DCXINDIA.NS',
+  sanghvimov: 'SANGHVIMOV.NS',
+  uds: 'UDS.NS',
+  jswinfra: 'JSWINFRA.NS',
+  iti: 'ITI.NS',
+  ntpc: 'NTPC.NS',
+  exideind: 'EXIDEIND.NS',
+  coalindia: 'COALINDIA.NS',
+  rvnl: 'RVNL.NS',
+  tatapower: 'TATAPOWER.NS',
+  bel: 'BEL.NS',
+  pcbl: 'PCBL.NS',
+  wpil: 'WPIL.BO',
+  dlinkindia: 'DLINKINDIA.NS',
+  hpl: 'HPL.NS',
+  akums: 'AKUMS.NS',
+  triturbine: 'TRITURBINE.NS',
+  emslimited: 'EMSLIMITED.NS',
+  dharmaj: 'DHARMAJ.BO',
+  genesys: 'GENESYS.NS',
+  wonderla: 'WONDERLA.NS',
+  tanla: 'TANLA.NS',
+  tatatech: 'TATATECH.NS',
+  asahiindia: 'ASAHIINDIA.NS',
+  highene: 'HIGHENE.BO',
+  jklakshmi: 'JKLAKSHMI.NS',
+  welcorp: 'WELCORP.NS',
+  titagarh: 'TITAGARH.NS',
+  are_m: 'ARE&M.NS',
+  liquidbees: 'LIQUIDBEES.NS',
+  premierene: 'PREMIERENE.NS',
+  voltas: 'VOLTAS.NS',
+  paras: 'PARAS.NS',
+  mtartech: 'MTARTECH.NS',
+  cdsl: 'CDSL.NS',
+  cochinship: 'COCHINSHIP.BO',
+  anup: 'ANUP.NS',
+  grse: 'GRSE.NS',
+  mazdock: 'MAZDOCK.NS',
+  siemens: 'SIEMENS.NS',
+  mafatind: 'MAFATIND.BO',
+  lt: 'LT.NS',
+  dmart: 'DMART.NS',
+  zuari: 'ZUARI.BO',
+  hal: 'HAL.NS',
+  abb: 'ABB.NS',
+  aparinds: 'APARINDS.NS',
+  voltamp: 'VOLTAMP.NS',
 
-  /* ── Tab Bar ── */
-  .tabbar{
-    position:fixed;bottom:0;left:50%;transform:translateX(-50%);
-    width:100%;max-width:420px;
-    background:var(--bg2);
-    border-top:1px solid var(--border);
-    display:flex;z-index:200;
-    padding:8px 0 max(10px,env(safe-area-inset-bottom));
-    backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
-  }
-  .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;padding:4px 0;transition:opacity 0.15s;}
-  .tab-icon{font-size:19px;line-height:1;transition:transform 0.2s;}
-  .tab.active .tab-icon{transform:scale(1.15);}
-  .tab-label{font-size:9px;color:var(--text3);letter-spacing:0.5px;font-weight:700;text-transform:uppercase;transition:color 0.15s;}
-  .tab.active .tab-label{color:var(--blue);}
-
-  /* ── Chart ── */
-  .chart-tabs{display:flex;gap:6px;padding:12px 16px 0;overflow-x:auto;scrollbar-width:none;}
-  .chart-tabs::-webkit-scrollbar{display:none;}
-  .chart-tab{white-space:nowrap;padding:5px 13px;border-radius:16px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid var(--border);color:var(--text2);font-family:var(--mono);transition:all 0.15s;}
-  .chart-tab.active{background:var(--blue);border-color:var(--blue);color:#fff;}
-  .chart-wrap{margin:12px 16px;border-radius:var(--radius-sm);overflow:hidden;background:var(--bg3);border:1px solid var(--border);}
-  .chart-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.6px;font-weight:700;padding:8px 12px 2px;}
-  .chart-loading{display:flex;align-items:center;justify-content:center;height:120px;color:var(--text3);font-size:12px;font-family:var(--mono);}
-  .modal-view-tabs{display:flex;border-bottom:1px solid var(--border);margin-top:4px;}
-  .modal-view-tab{flex:1;padding:10px;text-align:center;font-size:12px;font-weight:700;cursor:pointer;color:var(--text2);border-bottom:2px solid transparent;transition:all 0.15s;}
-  .modal-view-tab.active{color:var(--blue);border-bottom-color:var(--blue);}
-  .search-bar-wrap{padding:10px 16px;background:var(--bg2);border-bottom:1px solid var(--border);}
-  .search-bar{
-    width:100%;background:var(--bg3);border:1px solid var(--border);
-    border-radius:var(--radius-sm);color:var(--text);
-    padding:9px 14px 9px 36px;font-size:13px;font-family:var(--font);
-    outline:none;transition:border-color 0.15s;
-  }
-  .search-bar:focus{border-color:var(--blue);}
-  .search-bar-icon{position:absolute;left:28px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:14px;pointer-events:none;}
-  .search-bar-wrap{position:relative;}
-
-  /* ── Holding Period Badge ── */
-  .holding-badge{
-    display:inline-block;padding:2px 7px;border-radius:8px;
-    font-size:9px;font-weight:800;letter-spacing:0.3px;
-    background:#2a1f00;color:#f5c842;
-    border:1px solid rgba(245,200,66,0.3);
-    margin-left:6px;font-family:var(--mono);
-  }
-  .light .holding-badge{background:#3d2e00;color:#fbbf24;}
-
-  /* ── Search Suggestions ── */
-  .search-suggestions{
-    background:var(--bg2);border-bottom:1px solid var(--border);
-    max-height:180px;overflow-y:auto;
-  }
-  .search-suggestion-item{
-    display:flex;align-items:center;justify-content:space-between;
-    padding:10px 16px;border-bottom:1px solid var(--border);
-    cursor:pointer;font-size:13px;transition:background 0.1s;
-  }
-  .search-suggestion-item:last-child{border-bottom:none;}
-  .search-suggestion-item:active{background:var(--bg3);}
-  .suggestion-add{
-    font-size:11px;font-weight:800;color:var(--blue);
-    background:var(--blue-dim);padding:3px 9px;border-radius:10px;
-    white-space:nowrap;margin-left:8px;
-  }
-  .sector-badge{display:inline-block;padding:2px 7px;border-radius:8px;font-size:9px;font-weight:800;letter-spacing:0.4px;margin-left:6px;vertical-align:middle;}
-  .sec-IT      {background:rgba(99,102,241,0.18);color:#818cf8;}
-  .sec-Banking {background:rgba(59,130,246,0.18);color:#60a5fa;}
-  .sec-Energy  {background:rgba(245,158,11,0.18);color:#fbbf24;}
-  .sec-EV      {background:rgba(16,185,129,0.18);color:#34d399;}
-  .sec-FMCG    {background:rgba(249,115,22,0.18);color:#fb923c;}
-  .sec-NBFC    {background:rgba(139,92,246,0.18);color:#a78bfa;}
-  .sec-Metals  {background:rgba(107,114,128,0.18);color:#9ca3af;}
-  .sec-Pharma  {background:rgba(20,184,166,0.18);color:#2dd4bf;}
-  .sec-Auto    {background:rgba(239,68,68,0.18);color:#f87171;}
-  .sec-Consumer  {background:rgba(236,72,153,0.18);color:#f472b6;}
-  .sec-NSE       {background:rgba(61,142,240,0.15);color:#3d8ef0;}
-  .sec-BSE       {background:rgba(245,200,66,0.15);color:#f5c842;}
-  .sec-Telecom   {background:rgba(99,102,241,0.18);color:#818cf8;}
-  .sec-Insurance {background:rgba(16,185,129,0.18);color:#34d399;}
-  .sec-Finance   {background:rgba(139,92,246,0.18);color:#a78bfa;}
-  .sec-Healthcare{background:rgba(20,184,166,0.18);color:#2dd4bf;}
-  .sec-Infra     {background:rgba(245,158,11,0.18);color:#fbbf24;}
-  .sec-Realty    {background:rgba(239,68,68,0.18);color:#f87171;}
-  .sec-Cement    {background:rgba(120,113,108,0.18);color:#a8a29e;}
-  .sec-Chemicals {background:rgba(52,211,153,0.18);color:#34d399;}
-  .sec-Textiles  {background:rgba(251,113,133,0.18);color:#fb7185;}
-  .sec-Media     {background:rgba(167,139,250,0.18);color:#a78bfa;}
-  .sec-Defence   {background:rgba(55,65,81,0.35);color:#9ca3af;}
-  .sec-Logistics {background:rgba(6,182,212,0.18);color:#22d3ee;}
-  .sec-Retail    {background:rgba(249,115,22,0.18);color:#fb923c;}
-  .sec-Agri      {background:rgba(132,204,22,0.18);color:#a3e635;}
-
-  /* ── Swipe to Delete ── */
-  .swipe-wrap{position:relative;overflow:hidden;}
-  .swipe-delete-bg{
-    position:absolute;right:0;top:0;bottom:0;width:80px;
-    background:var(--red);display:flex;align-items:center;justify-content:center;
-    color:#fff;font-size:11px;font-weight:800;letter-spacing:0.5px;
-    opacity:0;transition:opacity 0.15s;
-  }
-  .swipe-wrap.revealed .swipe-delete-bg{opacity:1;}
-
-  /* ── Stock Row ── */
-  .stock-row{
-    display:flex;align-items:center;
-    padding:14px 16px;
-    border-bottom:1px solid var(--border);
-    cursor:pointer;
-    transition:background 0.12s;
-    position:relative;
-  }
-  .stock-row:active{background:var(--bg3);}
-
-  /* ── Pull to Refresh ── */
-  .ptr-indicator{
-    display:flex;align-items:center;justify-content:center;gap:8px;
-    height:0;overflow:hidden;transition:height 0.2s;
-    background:var(--bg3);font-size:12px;color:var(--text2);font-family:var(--mono);
-  }
-  .ptr-indicator.visible{height:44px;}
-  @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
-  .ptr-spin{display:inline-block;animation:spin 0.7s linear infinite;}
-  /* ── Price Flash Animation ── */
-  @keyframes flashUp {
-    0%   { background:rgba(0,229,160,0.22); }
-    60%  { background:rgba(0,229,160,0.10); }
-    100% { background:transparent; }
-  }
-  @keyframes flashDn {
-    0%   { background:rgba(255,61,107,0.22); }
-    60%  { background:rgba(255,61,107,0.10); }
-    100% { background:transparent; }
-  }
-  @keyframes numFlashUp {
-    0%,40% { color: var(--green); transform: scale(1.06); }
-    100%   { color: inherit; transform: scale(1); }
-  }
-  @keyframes numFlashDn {
-    0%,40% { color: var(--red); transform: scale(1.06); }
-    100%   { color: inherit; transform: scale(1); }
-  }
-  .flash-up { animation: flashUp 0.7s ease-out forwards; }
-  .flash-dn { animation: flashDn 0.7s ease-out forwards; }
-  .price-flash-up { animation: numFlashUp 0.7s ease-out forwards; }
-  .price-flash-dn { animation: numFlashDn 0.7s ease-out forwards; }
-  .stock-left{flex:1;min-width:0;}
-  .stock-name{
-    font-size:14px;font-weight:700;letter-spacing:-0.2px;
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-  }
-  .stock-sub{font-size:11px;color:var(--text2);margin-top:2px;font-family:var(--mono);}
-  .stock-right{text-align:right;flex-shrink:0;margin:0 10px;}
-  .stock-price{font-size:15px;font-weight:700;font-family:var(--mono);letter-spacing:-0.3px;}
-  .price-pct{font-size:11px;font-weight:600;font-family:var(--mono);}
-  .stock-change{font-size:11px;font-weight:600;margin-top:3px;white-space:nowrap;font-family:var(--mono);}
-  .up{color:var(--green);}
-  .dn{color:var(--red);}
-  .na{color:var(--text3);}
-  .remove-btn{
-    color:var(--text3);font-size:18px;padding:6px;cursor:pointer;flex-shrink:0;
-    border-radius:50%;transition:all 0.15s;width:30px;height:30px;
-    display:flex;align-items:center;justify-content:center;
-  }
-  .remove-btn:active{background:var(--red-dim);color:var(--red);}
-
-  /* ── Skeleton loader ── */
-  .skeleton{
-    background:linear-gradient(90deg,var(--bg3) 25%,var(--border) 50%,var(--bg3) 75%);
-    background-size:200% 100%;animation:shimmer 1.4s infinite;border-radius:5px;
-  }
-  @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
-
-  /* ── FAB ── */
-  .add-fab{
-    position:fixed;bottom:96px;right:calc(50% - 210px + 16px);
-    width:48px;height:48px;border-radius:50%;
-    background:linear-gradient(135deg,var(--blue),var(--blue2));
-    border:none;color:#fff;font-size:24px;cursor:pointer;
-    display:flex;align-items:center;justify-content:center;
-    box-shadow:0 4px 24px rgba(61,142,240,0.5);
-    z-index:150;transition:transform 0.12s,box-shadow 0.12s;
-  }
-  .add-fab:active{transform:scale(0.9);box-shadow:0 2px 12px rgba(61,142,240,0.3);}
-
-  /* ── Refresh indicator ── */
-  .refresh-bar{
-    display:flex;align-items:center;justify-content:space-between;
-    padding:7px 16px;
-    background:var(--bg3);border-bottom:1px solid var(--border);
-    font-size:11px;color:var(--text2);font-family:var(--mono);
-  }
-  .refresh-btn{
-    background:none;border:1px solid var(--border);color:var(--text2);
-    border-radius:14px;padding:4px 11px;font-size:11px;cursor:pointer;
-    font-family:var(--mono);transition:all 0.15s;
-  }
-  .refresh-btn:active{background:var(--border);}
-
-  /* ── Filter Bar ── */
-  .filter-bar{display:flex;gap:7px;padding:10px 16px;overflow-x:auto;border-bottom:1px solid var(--border);scrollbar-width:none;}
-  .filter-bar::-webkit-scrollbar{display:none;}
-  .filter-chip{
-    white-space:nowrap;background:transparent;border:1px solid var(--border);
-    color:var(--text2);border-radius:18px;padding:5px 13px;font-size:11px;
-    cursor:pointer;transition:all 0.15s;font-family:var(--mono);font-weight:500;
-  }
-  .filter-chip.active{background:var(--blue-dim);border-color:var(--blue);color:var(--blue);}
-
-  /* ── Detail Modal ── */
-  .modal-overlay{
-    position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:300;
-    display:flex;flex-direction:column;justify-content:flex-end;
-    align-items:center;
-    backdrop-filter:blur(4px);
-  }
-  .modal{
-    background:var(--bg2);border-radius:22px 22px 0 0;
-    padding:0 0 44px;max-height:88vh;overflow-y:auto;
-    box-shadow:0 -8px 40px rgba(0,0,0,0.5);
-    width:100%;max-width:420px;
-  }
-  .modal-handle{width:40px;height:4px;background:var(--border);border-radius:2px;margin:12px auto 0;}
-  .modal-header{padding:16px 18px 14px;border-bottom:1px solid var(--border);}
-  .modal-title{font-size:19px;font-weight:800;padding-right:38px;letter-spacing:-0.3px;}
-  .modal-close{
-    position:absolute;right:16px;top:16px;
-    background:var(--bg3);border:1px solid var(--border);color:var(--text2);
-    width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:13px;
-    display:flex;align-items:center;justify-content:center;
-    transition:all 0.15s;
-  }
-  .modal-close:active{background:var(--border);}
-  .modal-header{position:relative;}
-  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);margin:16px;}
-  .stat-cell{background:var(--bg2);padding:13px 15px;}
-  .stat-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px;font-weight:700;}
-  .stat-val{font-size:14px;font-weight:700;margin-top:4px;font-family:var(--mono);}
-  .stat-val.up{color:var(--green);}
-  .stat-val.dn{color:var(--red);}
-
-  /* ── Auto Refresh countdown ── */
-  .countdown{
-    display:inline-block;background:var(--bg3);border:1px solid var(--border);
-    border-radius:12px;padding:3px 9px;font-size:11px;color:var(--text2);
-    font-family:var(--mono);font-variant-numeric:tabular-nums;
-  }
-
-  /* ── Portfolio extras ── */
-  .port-extra{
-    padding:0 0 14px;background:var(--bg2);border-bottom:1px solid var(--border);
-  }
-  .port-meta-card{
-    background:var(--bg3);
-    padding:10px 16px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);
-  }
-  .port-meta-row{
-    display:grid;grid-template-columns:repeat(4,1fr);gap:4px;
-  }
-  .port-pnl-row{
-    display:flex;align-items:center;justify-content:space-between;
-  }
-  .port-meta-item{
-    display:flex;flex-direction:column;gap:3px;
-  }
-  .port-meta-label{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.6px;font-weight:700;}
-  .port-meta-val{font-size:12px;font-weight:700;color:var(--text);font-family:var(--mono);}
-
-  /* ── P&L ── */
-  .summary-card{
-    margin:16px;
-    background:linear-gradient(145deg,var(--bg3),var(--bg2));
-    border-radius:var(--radius);padding:18px;
-    border:1px solid var(--border);
-    box-shadow:var(--shadow);
-  }
-  .summary-big{font-size:28px;font-weight:800;letter-spacing:-1px;margin:6px 0 2px;font-family:var(--mono);}
-  .summary-label{font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:1px;font-weight:700;}
-  .pnl-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 16px 16px;}
-  .pnl-card{
-    background:var(--bg3);border-radius:var(--radius-sm);padding:13px;
-    border:1px solid var(--border);transition:border-color 0.2s;
-  }
-  .pnl-label{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.7px;font-weight:700;}
-  .pnl-val{font-size:17px;font-weight:800;margin-top:5px;font-family:var(--mono);letter-spacing:-0.5px;}
-
-  /* ── Badge ── */
-  .badge{display:inline-block;padding:2px 7px;border-radius:10px;font-size:9px;font-weight:800;margin-left:6px;font-family:var(--mono);letter-spacing:0.3px;}
-  .badge-up{background:var(--green-dim);color:var(--green);}
-  .badge-dn{background:var(--red-dim);color:var(--red);}
-
-  /* ── Settings ── */
-  .settings-section{margin:16px;border-radius:var(--radius);background:var(--bg2);border:1px solid var(--border);overflow:hidden;}
-  .settings-title{
-    padding:10px 16px;font-size:10px;color:var(--text3);
-    text-transform:uppercase;letter-spacing:1px;font-weight:800;
-    background:var(--bg3);border-bottom:1px solid var(--border);
-  }
-  .settings-row{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);}
-  .settings-row:last-child{border-bottom:none;}
-  .settings-row-label{font-size:14px;font-weight:600;}
-  .settings-row-sub{font-size:11px;color:var(--text2);margin-top:1px;font-family:var(--mono);}
-  .toggle{width:46px;height:26px;border-radius:13px;background:var(--bg3);border:1px solid var(--border);cursor:pointer;position:relative;transition:all 0.25s;flex-shrink:0;}
-  .toggle.on{background:var(--green);border-color:var(--green);}
-  .toggle::after{content:'';position:absolute;width:20px;height:20px;border-radius:50%;background:#fff;top:2px;left:2px;transition:transform 0.25s;box-shadow:0 1px 4px rgba(0,0,0,0.3);}
-  .toggle.on::after{transform:translateX(20px);}
-  .seg-control{display:flex;background:var(--bg3);border-radius:var(--radius-xs);overflow:hidden;border:1px solid var(--border);}
-  .seg-btn{padding:6px 12px;font-size:11px;cursor:pointer;color:var(--text2);font-weight:600;transition:all 0.15s;}
-  .seg-btn.active{background:var(--blue);color:#fff;}
-  .settings-input{
-    background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-xs);
-    color:var(--text);padding:9px 11px;font-size:13px;flex:1;font-family:var(--mono);
-  }
-  .settings-input:focus{outline:none;border-color:var(--blue);}
-  .save-btn{
-    background:linear-gradient(135deg,var(--blue),var(--blue2));color:#fff;border:none;
-    border-radius:var(--radius-xs);padding:8px 16px;font-size:12px;cursor:pointer;
-    font-weight:700;font-family:var(--font);white-space:nowrap;
-  }
-
-  /* ── Add Modal ── */
-  .modal-overlay .add-modal{
-    background:var(--bg2);border-radius:22px 22px 0 0;
-    padding:20px 18px 44px;max-height:80vh;overflow-y:auto;
-  }
-  .add-input{
-    width:100%;background:var(--bg3);border:1px solid var(--border);
-    border-radius:var(--radius-sm);color:var(--text);
-    padding:12px 14px;font-size:14px;margin-bottom:10px;
-    outline:none;font-family:var(--font);transition:border-color 0.15s;
-  }
-  .add-input:focus{border-color:var(--blue);}
-  .search-results{
-    background:var(--bg3);border-radius:var(--radius-sm);
-    border:1px solid var(--border);margin-bottom:12px;
-    overflow:hidden;max-height:200px;overflow-y:auto;
-  }
-  .search-item{padding:12px 14px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px;transition:background 0.1s;}
-  .search-item:last-child{border-bottom:none;}
-  .search-item:active{background:var(--bg2);}
-  .search-item.sel{background:var(--blue-dim);border-left:3px solid var(--blue);}
-  .btn-primary{
-    width:100%;
-    background:linear-gradient(135deg,var(--blue),var(--blue2));
-    color:#fff;border:none;border-radius:var(--radius-sm);
-    padding:14px;font-size:15px;font-weight:800;cursor:pointer;margin-top:8px;
-    font-family:var(--font);letter-spacing:0.3px;transition:opacity 0.15s;
-  }
-  .btn-primary:disabled{opacity:0.4;cursor:not-allowed;}
-
-  /* ── Lock ── */
-  .lock-screen{
-    position:fixed;inset:0;background:var(--bg);z-index:500;
-    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;
-  }
-  .lock-keypad{display:grid;grid-template-columns:repeat(3,76px);gap:14px;}
-  .lock-key{
-    width:76px;height:76px;border-radius:50%;
-    background:var(--bg3);border:1px solid var(--border);
-    color:var(--text);font-size:22px;font-weight:700;
-    cursor:pointer;display:flex;align-items:center;justify-content:center;
-    font-family:var(--mono);transition:all 0.12s;
-  }
-  .lock-key:active{background:var(--blue-dim);border-color:var(--blue);color:var(--blue);}
-  .lock-key.del{background:transparent;border:none;font-size:20px;color:var(--text2);}
-  .lock-dots{display:flex;gap:18px;}
-  .lock-dot{width:14px;height:14px;border-radius:50%;border:2px solid var(--border);transition:all 0.2s;}
-  .lock-dot.filled{background:var(--blue);border-color:var(--blue);box-shadow:0 0 8px rgba(61,142,240,0.5);}
-
-  /* ── Empty ── */
-  .empty-state{text-align:center;padding:56px 24px;color:var(--text2);}
-  .empty-icon{font-size:44px;margin-bottom:14px;opacity:0.6;}
-  .empty-text{font-size:14px;font-weight:600;color:var(--text2);}
-  .empty-sub{font-size:12px;color:var(--text3);margin-top:4px;}
-
-  /* ── Error banner ── */
-  .error-banner{
-    background:var(--red-dim);border:1px solid rgba(255,61,107,0.25);
-    border-radius:var(--radius-sm);margin:12px 16px;
-    padding:10px 14px;font-size:12px;color:var(--red);font-family:var(--mono);
-  }
-</style>
-</head>
-<body>
-<div id="root"></div>
-<script>
-(function(){
-  var theme = localStorage.getItem('theme')||'dark';
-  var fs = localStorage.getItem('fontSize')||'medium';
-  document.documentElement.className = 'font-' + fs;
-  document.body.className = theme === 'light' ? 'light' : '';
-})();
-</script>
-
-<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-
-<script>
-const {useState,useEffect,useRef,useCallback}=React;
-const h=React.createElement;
-
-// ═══════════════════════════════════════════════════════════
-// CONFIG
-// ═══════════════════════════════════════════════════════════
-const PROXY_URL = localStorage.getItem('proxyUrl') || 'http://localhost:3001';
-const REFRESH_INTERVAL = 30;
-
-// ═══════════════════════════════════════════════════════════
-// STATIC METADATA
-// ═══════════════════════════════════════════════════════════
-const INDICES_META = [
-  {id:'nifty50',      name:'NIFTY 50',         desc:'NSE Benchmark'},
-  {id:'banknifty',    name:'BANK NIFTY',        desc:'NSE Banking'},
-  {id:'sensex',       name:'SENSEX',            desc:'BSE 30'},
-  {id:'bankex',       name:'BANKEX',            desc:'BSE Banking'},
-  {id:'finnifty',     name:'FIN NIFTY',         desc:'Financial Services'},
-  {id:'midcap',       name:'MIDCAP NIFTY',      desc:'Mid Cap 150'},
-  {id:'smallcap',     name:'SMALLCAP NIFTY',    desc:'Small Cap 250'},
-  {id:'niftyit',      name:'NIFTY IT',          desc:'IT Sector'},
-  {id:'niftypharma',  name:'NIFTY PHARMA',      desc:'Pharma Sector'},
-  {id:'niftyauto',    name:'NIFTY AUTO',        desc:'Auto Sector'},
-  {id:'niftymetal',   name:'NIFTY METAL',       desc:'Metal Sector'},
-  {id:'niftyfmcg',    name:'NIFTY FMCG',        desc:'FMCG Sector'},
-  {id:'niftyrealty',  name:'NIFTY REALTY',      desc:'Real Estate'},
-  {id:'niftyenergy',  name:'NIFTY ENERGY',      desc:'Energy Sector'},
-  {id:'niftyinfra',   name:'NIFTY INFRA',       desc:'Infrastructure'},
-  {id:'niftypse',     name:'NIFTY PSE',         desc:'Public Sector'},
-  {id:'nifty100',     name:'NIFTY 100',         desc:'Top 100 NSE'},
-  {id:'nifty200',     name:'NIFTY 200',         desc:'Top 200 NSE'},
-  {id:'nifty500',     name:'NIFTY 500',         desc:'Top 500 NSE'},
-  {id:'niftynext50',  name:'NIFTY NEXT 50',     desc:'NSE Next 50'},
-  {id:'niftymidcap150',name:'MIDCAP 150',       desc:'NSE Midcap 150'},
-  {id:'niftysmallcap100',name:'SMALLCAP 100',   desc:'NSE Smallcap 100'},
-  {id:'niftymicro250',name:'MICROCAP 250',      desc:'NSE Microcap 250'},
-  {id:'sensex50',     name:'SENSEX 50',         desc:'BSE Top 50'},
-  {id:'bse100',       name:'BSE 100',           desc:'BSE Top 100'},
-  {id:'bse200',       name:'BSE 200',           desc:'BSE Top 200'},
-  {id:'bse500',       name:'BSE 500',           desc:'BSE Top 500'},
-  {id:'bsemidcap',    name:'BSE MIDCAP',        desc:'BSE Mid Cap'},
-  {id:'bsesmallcap',  name:'BSE SMALLCAP',      desc:'BSE Small Cap'},
-  {id:'bsemicrocap',  name:'BSE MICROCAP',      desc:'BSE Micro Cap'},
-  {id:'niftymedia',   name:'NIFTY MEDIA',       desc:'Media Sector'},
-  {id:'niftyconsumer',name:'NIFTY CONSUMER',    desc:'Consumer Durables'},
-  {id:'niftyoil',     name:'NIFTY OIL & GAS',   desc:'Oil & Gas Sector'},
-  {id:'niftydefence', name:'NIFTY DEFENCE',     desc:'Defence Sector'},
-  {id:'niftypvtbank', name:'NIFTY PVT BANK',    desc:'Private Banks'},
-  {id:'niftypsubank', name:'NIFTY PSU BANK',    desc:'PSU Banks'},
-  {id:'niftymnc',     name:'NIFTY MNC',         desc:'Multinational Corps'},
-];
-
-const STOCKS_META = [
-  // ── YOUR CUSTOM WATCHLIST ─────────────────────────────────
-  {id:'reltd',sym:'RELTD',name:'RELTD',exchange:'NSE',sector:''},
-  {id:'iciciamc',sym:'ICICIAMC',name:'ICICIAMC',exchange:'NSE',sector:''},
-  {id:'olectra',sym:'OLECTRA',name:'OLECTRA',exchange:'NSE',sector:''},
-  {id:'kaynes',sym:'KAYNES',name:'KAYNES',exchange:'NSE',sector:''},
-  {id:'baluforge',sym:'BALUFORGE',name:'BALUFORGE',exchange:'NSE',sector:''},
-  {id:'subros',sym:'SUBROS',name:'SUBROS',exchange:'NSE',sector:''},
-  {id:'pwl',sym:'PWL',name:'PWL',exchange:'NSE',sector:''},
-  {id:'garuda',sym:'GARUDA',name:'GARUDA',exchange:'NSE',sector:''},
-  {id:'jwl',sym:'JWL',name:'JWL',exchange:'NSE',sector:''},
-  {id:'tennind',sym:'TENNIND',name:'TENNIND',exchange:'NSE',sector:''},
-  {id:'lemontree',sym:'LEMONTREE',name:'LEMONTREE',exchange:'NSE',sector:''},
-  {id:'shardacrop',sym:'SHARDACROP',name:'SHARDACROP',exchange:'NSE',sector:''},
-  {id:'bse',sym:'BSE',name:'BSE',exchange:'NSE',sector:''},
-  {id:'groww',sym:'GROWW',name:'GROWW',exchange:'NSE',sector:''},
-  {id:'transraill',sym:'TRANSRAILL',name:'TRANSRAILL',exchange:'NSE',sector:''},
-  {id:'hblengine',sym:'HBLENGINE',name:'HBLENGINE',exchange:'NSE',sector:''},
-  {id:'taril',sym:'TARIL',name:'TARIL',exchange:'BSE',sector:''},
-  {id:'shaktipump',sym:'SHAKTIPUMP',name:'SHAKTIPUMP',exchange:'NSE',sector:''},
-  {id:'waareeener',sym:'WAAREEENER',name:'WAAREEENER',exchange:'NSE',sector:''},
-  {id:'remsonsind',sym:'REMSONSIND',name:'REMSONSIND',exchange:'NSE',sector:''},
-  {id:'suryarosni',sym:'SURYAROSNI',name:'SURYAROSNI',exchange:'NSE',sector:''},
-  {id:'vikran',sym:'VIKRAN',name:'VIKRAN',exchange:'NSE',sector:''},
-  {id:'adaniensol',sym:'ADANIENSOL',name:'ADANIENSOL',exchange:'NSE',sector:''},
-  {id:'adanipower',sym:'ADANIPOWER',name:'ADANIPOWER',exchange:'NSE',sector:''},
-  {id:'ambujacem',sym:'AMBUJACEM',name:'AMBUJACEM',exchange:'NSE',sector:''},
-  {id:'trident',sym:'TRIDENT',name:'TRIDENT',exchange:'NSE',sector:''},
-  {id:'kprmill',sym:'KPRMILL',name:'KPRMILL',exchange:'NSE',sector:''},
-  {id:'adanient',sym:'ADANIENT',name:'ADANIENT',exchange:'NSE',sector:''},
-  {id:'adaniports',sym:'ADANIPORTS',name:'ADANIPORTS',exchange:'NSE',sector:''},
-  {id:'krn',sym:'KRN',name:'KRN',exchange:'NSE',sector:''},
-  {id:'lgeindia',sym:'LGEINDIA',name:'LGEINDIA',exchange:'NSE',sector:''},
-  {id:'vedl',sym:'VEDL',name:'VEDL',exchange:'NSE',sector:''},
-  {id:'cpplus',sym:'CPPLUS',name:'CPPLUS',exchange:'NSE',sector:''},
-  {id:'eternal',sym:'ETERNAL',name:'ETERNAL',exchange:'NSE',sector:''},
-  {id:'stylamind',sym:'STYLAMIND',name:'STYLAMIND',exchange:'NSE',sector:''},
-  {id:'sbin',sym:'SBIN',name:'SBIN',exchange:'NSE',sector:''},
-  {id:'reliance',sym:'RELIANCE',name:'RELIANCE',exchange:'NSE',sector:''},
-  {id:'texrail',sym:'TEXRAIL',name:'TEXRAIL',exchange:'NSE',sector:''},
-  {id:'waareertl',sym:'WAAREERTL',name:'WAAREERTL',exchange:'BSE',sector:''},
-  {id:'yatharth',sym:'YATHARTH',name:'YATHARTH',exchange:'NSE',sector:''},
-  {id:'jindrill',sym:'JINDRILL',name:'JINDRILL',exchange:'NSE',sector:''},
-  {id:'sandhar',sym:'SANDHAR',name:'SANDHAR',exchange:'NSE',sector:''},
-  {id:'premexpln',sym:'PREMEXPLN',name:'PREMEXPLN',exchange:'NSE',sector:''},
-  {id:'intlconv',sym:'INTLCONV',name:'INTLCONV',exchange:'NSE',sector:''},
-  {id:'denta',sym:'DENTA',name:'DENTA',exchange:'NSE',sector:''},
-  {id:'bhagyangr',sym:'BHAGYANGR',name:'BHAGYANGR',exchange:'BSE',sector:''},
-  {id:'chennpetro',sym:'CHENNPETRO',name:'CHENNPETRO',exchange:'NSE',sector:''},
-  {id:'hfcl',sym:'HFCL',name:'HFCL',exchange:'NSE',sector:''},
-  {id:'tbz',sym:'TBZ',name:'TBZ',exchange:'NSE',sector:''},
-  {id:'nmdc',sym:'NMDC',name:'NMDC',exchange:'NSE',sector:''},
-  {id:'ellen',sym:'ELLEN',name:'ELLEN',exchange:'NSE',sector:''},
-  {id:'tdpowersys',sym:'TDPOWERSYS',name:'TDPOWERSYS',exchange:'NSE',sector:''},
-  {id:'lloydsengg',sym:'LLOYDSENGG',name:'LLOYDSENGG',exchange:'BSE',sector:''},
-  {id:'maithanall',sym:'MAITHANALL',name:'MAITHANALL',exchange:'BSE',sector:''},
-  {id:'iex',sym:'IEX',name:'IEX',exchange:'NSE',sector:''},
-  {id:'bancoindia',sym:'BANCOINDIA',name:'BANCOINDIA',exchange:'NSE',sector:''},
-  {id:'recltd',sym:'RECLTD',name:'RECLTD',exchange:'NSE',sector:''},
-  {id:'jsll',sym:'JSLL',name:'JSLL',exchange:'NSE',sector:''},
-  {id:'shilpamed',sym:'SHILPAMED',name:'SHILPAMED',exchange:'NSE',sector:''},
-  {id:'tatacap',sym:'TATACAP',name:'TATACAP',exchange:'NSE',sector:''},
-  {id:'ace',sym:'ACE',name:'ACE',exchange:'NSE',sector:''},
-  {id:'meesho',sym:'MEESHO',name:'MEESHO',exchange:'BSE',sector:''},
-  {id:'goldbees',sym:'GOLDBEES',name:'GOLDBEES',exchange:'NSE',sector:''},
-  {id:'goldetf',sym:'GOLDETF',name:'GOLDETF',exchange:'NSE',sector:''},
-  {id:'aci',sym:'ACI',name:'ACI',exchange:'NSE',sector:''},
-  {id:'natcopharm',sym:'NATCOPHARM',name:'NATCOPHARM',exchange:'NSE',sector:''},
-  {id:'urbanco',sym:'URBANCO',name:'URBANCO',exchange:'NSE',sector:''},
-  {id:'acmesolar',sym:'ACMESOLAR',name:'ACMESOLAR',exchange:'NSE',sector:''},
-  {id:'lauruslabs',sym:'LAURUSLABS',name:'LAURUSLABS',exchange:'NSE',sector:''},
-  {id:'nsdl',sym:'NSDL',name:'NSDL',exchange:'BSE',sector:''},
-  {id:'acc',sym:'ACC',name:'ACC',exchange:'NSE',sector:''},
-  {id:'southwest',sym:'SOUTHWEST',name:'SOUTHWEST',exchange:'BSE',sector:''},
-  {id:'igil',sym:'IGIL',name:'IGIL',exchange:'NSE',sector:''},
-  {id:'gmdcltd',sym:'GMDCLTD',name:'GMDCLTD',exchange:'NSE',sector:''},
-  {id:'tmcv',sym:'TMCV',name:'TMCV',exchange:'BSE',sector:''},
-  {id:'acgl',sym:'ACGL',name:'ACGL',exchange:'BSE',sector:''},
-  {id:'tmpv',sym:'TMPV',name:'TMPV',exchange:'NSE',sector:''},
-  {id:'unimech',sym:'UNIMECH',name:'UNIMECH',exchange:'NSE',sector:''},
-  {id:'stovekraft',sym:'STOVEKRAFT',name:'STOVEKRAFT',exchange:'NSE',sector:''},
-  {id:'syrma',sym:'SYRMA',name:'SYRMA',exchange:'NSE',sector:''},
-  {id:'studds',sym:'STUDDS',name:'STUDDS',exchange:'NSE',sector:''},
-  {id:'chemcon',sym:'CHEMCON',name:'CHEMCON',exchange:'NSE',sector:''},
-  {id:'lenskart',sym:'LENSKART',name:'LENSKART',exchange:'NSE',sector:''},
-  {id:'heg',sym:'HEG',name:'HEG',exchange:'BSE',sector:''},
-  {id:'tajgvk',sym:'TAJGVK',name:'TAJGVK',exchange:'NSE',sector:''},
-  {id:'indotech',sym:'INDOTECH',name:'INDOTECH',exchange:'NSE',sector:''},
-  {id:'mosmall250',sym:'MOSMALL250',name:'MOSMALL250',exchange:'NSE',sector:''},
-  {id:'ashokley',sym:'ASHOKLEY',name:'ASHOKLEY',exchange:'NSE',sector:''},
-  {id:'chalet',sym:'CHALET',name:'CHALET',exchange:'NSE',sector:''},
-  {id:'mahepc',sym:'MAHEPC',name:'MAHEPC',exchange:'NSE',sector:''},
-  {id:'elecon',sym:'ELECON',name:'ELECON',exchange:'NSE',sector:''},
-  {id:'hdbfs',sym:'HDBFS',name:'HDBFS',exchange:'NSE',sector:''},
-  {id:'vikramsolr',sym:'VIKRAMSOLR',name:'VIKRAMSOLR',exchange:'NSE',sector:''},
-  {id:'greavescot',sym:'GREAVESCOT',name:'GREAVESCOT',exchange:'NSE',sector:''},
-  {id:'hondapower',sym:'HONDAPOWER',name:'HONDAPOWER',exchange:'NSE',sector:''},
-  {id:'globecivil',sym:'GLOBECIVIL',name:'GLOBECIVIL',exchange:'NSE',sector:''},
-  {id:'arvsmart',sym:'ARVSMART',name:'ARVSMART',exchange:'NSE',sector:''},
-  {id:'sci',sym:'SCI',name:'SCI',exchange:'NSE',sector:''},
-  {id:'moschip',sym:'MOSCHIP',name:'MOSCHIP',exchange:'NSE',sector:''},
-  {id:'veljan',sym:'VELJAN',name:'VELJAN',exchange:'BSE',sector:''},
-  {id:'micel',sym:'MICEL',name:'MICEL',exchange:'BSE',sector:''},
-  {id:'shaily',sym:'SHAILY',name:'SHAILY',exchange:'NSE',sector:''},
-  {id:'ipl',sym:'IPL',name:'IPL',exchange:'NSE',sector:''},
-  {id:'mazda',sym:'MAZDA',name:'MAZDA',exchange:'NSE',sector:''},
-  {id:'bodalchem',sym:'BODALCHEM',name:'BODALCHEM',exchange:'NSE',sector:''},
-  {id:'genuspower',sym:'GENUSPOWER',name:'GENUSPOWER',exchange:'NSE',sector:''},
-  {id:'smallcap',sym:'SMALLCAP',name:'SMALLCAP',exchange:'NSE',sector:''},
-  {id:'eiel',sym:'EIEL',name:'EIEL',exchange:'NSE',sector:''},
-  {id:'gujaratpoly',sym:'GUJARATPOLY',name:'GUJARATPOLY',exchange:'BSE',sector:''},
-  {id:'mkexim',sym:'MKEXIM',name:'MKEXIM',exchange:'BSE',sector:''},
-  {id:'rohltd',sym:'ROHLTD',name:'ROHLTD',exchange:'NSE',sector:''},
-  {id:'ratnaveer',sym:'RATNAVEER',name:'RATNAVEER',exchange:'NSE',sector:''},
-  {id:'omaxauto',sym:'OMAXAUTO',name:'OMAXAUTO',exchange:'BSE',sector:''},
-  {id:'tatasteel',sym:'TATASTEEL',name:'TATASTEEL',exchange:'BSE',sector:''},
-  {id:'meil',sym:'MEIL',name:'MEIL',exchange:'NSE',sector:''},
-  {id:'atulauto',sym:'ATULAUTO',name:'ATULAUTO',exchange:'NSE',sector:''},
-  {id:'basilic',sym:'BASILIC',name:'BASILIC',exchange:'NSE',sector:''},
-  {id:'inoxindia',sym:'INOXINDIA',name:'INOXINDIA',exchange:'NSE',sector:''},
-  {id:'bluejet',sym:'BLUEJET',name:'BLUEJET',exchange:'BSE',sector:''},
-  {id:'patanjali',sym:'PATANJALI',name:'PATANJALI',exchange:'NSE',sector:''},
-  {id:'powermech',sym:'POWERMECH',name:'POWERMECH',exchange:'NSE',sector:''},
-  {id:'motherson',sym:'MOTHERSON',name:'MOTHERSON',exchange:'BSE',sector:''},
-  {id:'hdfcamc',sym:'HDFCAMC',name:'HDFCAMC',exchange:'NSE',sector:''},
-  {id:'jswcement',sym:'JSWCEMENT',name:'JSWCEMENT',exchange:'BSE',sector:''},
-  {id:'hdfcbank',sym:'HDFCBANK',name:'HDFCBANK',exchange:'BSE',sector:''},
-  {id:'paisalo',sym:'PAISALO',name:'PAISALO',exchange:'BSE',sector:''},
-  {id:'cupid',sym:'CUPID',name:'CUPID',exchange:'BSE',sector:''},
-  {id:'igarashi',sym:'IGARASHI',name:'IGARASHI',exchange:'NSE',sector:''},
-  {id:'supriya',sym:'SUPRIYA',name:'SUPRIYA',exchange:'NSE',sector:''},
-  {id:'kirlosbros',sym:'KIRLOSBROS',name:'KIRLOSBROS',exchange:'NSE',sector:''},
-  {id:'bondada',sym:'BONDADA',name:'BONDADA',exchange:'BSE',sector:''},
-  {id:'nile',sym:'NILE',name:'NILE',exchange:'BSE',sector:''},
-  {id:'veto',sym:'VETO',name:'VETO',exchange:'NSE',sector:''},
-  {id:'zentec',sym:'ZENTEC',name:'ZENTEC',exchange:'NSE',sector:''},
-  {id:'kpigreen',sym:'KPIGREEN',name:'KPIGREEN',exchange:'BSE',sector:''},
-  {id:'simmond',sym:'SIMMOND',name:'SIMMOND',exchange:'BSE',sector:''},
-  {id:'technoe',sym:'TECHNOE',name:'TECHNOE',exchange:'NSE',sector:''},
-  {id:'icicibank',sym:'ICICIBANK',name:'ICICIBANK',exchange:'NSE',sector:''},
-  {id:'imagicaa',sym:'IMAGICAA',name:'IMAGICAA',exchange:'NSE',sector:''},
-  {id:'bluestarco',sym:'BLUESTARCO',name:'BLUESTARCO',exchange:'NSE',sector:''},
-  {id:'datapattns',sym:'DATAPATTNS',name:'DATAPATTNS',exchange:'NSE',sector:''},
-  {id:'schneider',sym:'SCHNEIDER',name:'SCHNEIDER',exchange:'BSE',sector:''},
-  {id:'castrolind',sym:'CASTROLIND',name:'CASTROLIND',exchange:'NSE',sector:''},
-  {id:'avantel',sym:'AVANTEL',name:'AVANTEL',exchange:'NSE',sector:''},
-  {id:'polyplex',sym:'POLYPLEX',name:'POLYPLEX',exchange:'NSE',sector:''},
-  {id:'sailife',sym:'SAILIFE',name:'SAILIFE',exchange:'NSE',sector:''},
-  {id:'sail',sym:'SAIL',name:'SAIL',exchange:'NSE',sector:''},
-  {id:'hyundai',sym:'HYUNDAI',name:'HYUNDAI',exchange:'NSE',sector:''},
-  {id:'rtnindia',sym:'RTNINDIA',name:'RTNINDIA',exchange:'BSE',sector:''},
-  {id:'jbma',sym:'JBMA',name:'JBMA',exchange:'NSE',sector:''},
-  {id:'alembicltd',sym:'ALEMBICLTD',name:'ALEMBICLTD',exchange:'NSE',sector:''},
-  {id:'univastu',sym:'UNIVASTU',name:'UNIVASTU',exchange:'NSE',sector:''},
-  {id:'aeroenter',sym:'AEROENTER',name:'AEROENTER',exchange:'NSE',sector:''},
-  {id:'mrpl',sym:'MRPL',name:'MRPL',exchange:'NSE',sector:''},
-  {id:'refex',sym:'REFEX',name:'REFEX',exchange:'NSE',sector:''},
-  {id:'indofarm',sym:'INDOFARM',name:'INDOFARM',exchange:'BSE',sector:''},
-  {id:'multibase',sym:'MULTIBASE',name:'MULTIBASE',exchange:'BSE',sector:''},
-  {id:'madrasfert',sym:'MADRASFERT',name:'MADRASFERT',exchange:'NSE',sector:''},
-  {id:'greenply',sym:'GREENPLY',name:'GREENPLY',exchange:'NSE',sector:''},
-  {id:'hscl',sym:'HSCL',name:'HSCL',exchange:'NSE',sector:''},
-  {id:'bajfinance',sym:'BAJFINANCE',name:'BAJFINANCE',exchange:'NSE',sector:''},
-  {id:'mircelectr',sym:'MIRCELECTR',name:'MIRCELECTR',exchange:'BSE',sector:''},
-  {id:'bpl',sym:'BPL',name:'BPL',exchange:'BSE',sector:''},
-  {id:'suzlon',sym:'SUZLON',name:'SUZLON',exchange:'NSE',sector:''},
-  {id:'zensartech',sym:'ZENSARTECH',name:'ZENSARTECH',exchange:'NSE',sector:''},
-  {id:'ircon',sym:'IRCON',name:'IRCON',exchange:'NSE',sector:''},
-  {id:'silverbees',sym:'SILVERBEES',name:'SILVERBEES',exchange:'NSE',sector:''},
-  {id:'varroc',sym:'VARROC',name:'VARROC',exchange:'NSE',sector:''},
-  {id:'indusindbk',sym:'INDUSINDBK',name:'INDUSINDBK',exchange:'BSE',sector:''},
-  {id:'integraen',sym:'INTEGRAEN',name:'INTEGRAEN',exchange:'BSE',sector:''},
-  {id:'jindworld',sym:'JINDWORLD',name:'JINDWORLD',exchange:'NSE',sector:''},
-  {id:'olaelec',sym:'OLAELEC',name:'OLAELEC',exchange:'BSE',sector:''},
-  {id:'kecl',sym:'KECL',name:'KECL',exchange:'NSE',sector:''},
-  {id:'electcast',sym:'ELECTCAST',name:'ELECTCAST',exchange:'NSE',sector:''},
-  {id:'paytm',sym:'PAYTM',name:'PAYTM',exchange:'NSE',sector:''},
-  {id:'titan',sym:'TITAN',name:'TITAN',exchange:'NSE',sector:''},
-  {id:'anthem',sym:'ANTHEM',name:'ANTHEM',exchange:'NSE',sector:''},
-  {id:'transworld',sym:'TRANSWORLD',name:'TRANSWORLD',exchange:'NSE',sector:''},
-  {id:'jktyre',sym:'JKTYRE',name:'JKTYRE',exchange:'NSE',sector:''},
-  {id:'infy',sym:'INFY',name:'INFY',exchange:'NSE',sector:''},
-  {id:'moil',sym:'MOIL',name:'MOIL',exchange:'NSE',sector:''},
-  {id:'sudarschem',sym:'SUDARSCHEM',name:'SUDARSCHEM',exchange:'NSE',sector:''},
-  {id:'forcemot',sym:'FORCEMOT',name:'FORCEMOT',exchange:'NSE',sector:''},
-  {id:'godfryphlp',sym:'GODFRYPHLP',name:'GODFRYPHLP',exchange:'NSE',sector:''},
-  {id:'itc',sym:'ITC',name:'ITC',exchange:'NSE',sector:''},
-  {id:'ekc',sym:'EKC',name:'EKC',exchange:'NSE',sector:''},
-  {id:'tcs',sym:'TCS',name:'TCS',exchange:'BSE',sector:''},
-  {id:'dcmsrind',sym:'DCMSRIND',name:'DCMSRIND',exchange:'NSE',sector:''},
-  {id:'atgl',sym:'ATGL',name:'ATGL',exchange:'NSE',sector:''},
-  {id:'rategain',sym:'RATEGAIN',name:'RATEGAIN',exchange:'NSE',sector:''},
-  {id:'kec',sym:'KEC',name:'KEC',exchange:'NSE',sector:''},
-  {id:'tanaa',sym:'TANAA',name:'TANAA',exchange:'BSE',sector:''},
-  {id:'jiofin',sym:'JIOFIN',name:'JIOFIN',exchange:'NSE',sector:''},
-  {id:'exhicon',sym:'EXHICON',name:'EXHICON',exchange:'BSE',sector:''},
-  {id:'shreeosfm',sym:'SHREEOSFM',name:'SHREEOSFM',exchange:'NSE',sector:''},
-  {id:'20microns',sym:'20MICRONS',name:'20MICRONS',exchange:'BSE',sector:''},
-  {id:'mishtann',sym:'MISHTANN',name:'MISHTANN',exchange:'BSE',sector:''},
-  {id:'mhlxmiru',sym:'MHLXMIRU',name:'MHLXMIRU',exchange:'BSE',sector:''},
-  {id:'goodricke',sym:'GOODRICKE',name:'GOODRICKE',exchange:'BSE',sector:''},
-  {id:'stardelta',sym:'STARDELTA',name:'STARDELTA',exchange:'BSE',sector:''},
-  {id:'jtlind',sym:'JTLIND',name:'JTLIND',exchange:'NSE',sector:''},
-  {id:'pancarbon',sym:'PANCARBON',name:'PANCARBON',exchange:'BSE',sector:''},
-  {id:'rexnord',sym:'REXNORD',name:'REXNORD',exchange:'BSE',sector:''},
-  {id:'somiconvey',sym:'SOMICONVEY',name:'SOMICONVEY',exchange:'NSE',sector:''},
-  {id:'pixtrans',sym:'PIXTRANS',name:'PIXTRANS',exchange:'NSE',sector:''},
-  {id:'globoffs',sym:'GLOBOFFS',name:'GLOBOFFS',exchange:'BSE',sector:''},
-  {id:'swissmltry',sym:'SWISSMLTRY',name:'SWISSMLTRY',exchange:'BSE',sector:''},
-  {id:'rdbrl',sym:'RDBRL',name:'RDBRL',exchange:'BSE',sector:''},
-  {id:'chamblfert',sym:'CHAMBLFERT',name:'CHAMBLFERT',exchange:'NSE',sector:''},
-  {id:'mmfl',sym:'MMFL',name:'MMFL',exchange:'NSE',sector:''},
-  {id:'cewater',sym:'CEWATER',name:'CEWATER',exchange:'NSE',sector:''},
-  {id:'vmm',sym:'VMM',name:'VMM',exchange:'NSE',sector:''},
-  {id:'scilal',sym:'SCILAL',name:'SCILAL',exchange:'BSE',sector:''},
-  {id:'irctc',sym:'IRCTC',name:'IRCTC',exchange:'NSE',sector:''},
-  {id:'heranba',sym:'HERANBA',name:'HERANBA',exchange:'NSE',sector:''},
-  {id:'nbcc',sym:'NBCC',name:'NBCC',exchange:'NSE',sector:''},
-  {id:'heromotoco',sym:'HEROMOTOCO',name:'HEROMOTOCO',exchange:'NSE',sector:''},
-  {id:'idea',sym:'IDEA',name:'IDEA',exchange:'NSE',sector:''},
-  {id:'ifci',sym:'IFCI',name:'IFCI',exchange:'NSE',sector:''},
-  {id:'lici',sym:'LICI',name:'LICI',exchange:'BSE',sector:''},
-  {id:'hindzinc',sym:'HINDZINC',name:'HINDZINC',exchange:'NSE',sector:''},
-  {id:'hindcopper',sym:'HINDCOPPER',name:'HINDCOPPER',exchange:'NSE',sector:''},
-  {id:'hindalco',sym:'HINDALCO',name:'HINDALCO',exchange:'BSE',sector:''},
-  {id:'hindoilexp',sym:'HINDOILEXP',name:'HINDOILEXP',exchange:'NSE',sector:''},
-  {id:'nationalum',sym:'NATIONALUM',name:'NATIONALUM',exchange:'NSE',sector:''},
-  {id:'swsolar',sym:'SWSOLAR',name:'SWSOLAR',exchange:'NSE',sector:''},
-  {id:'efcil',sym:'EFCIL',name:'EFCIL',exchange:'BSE',sector:''},
-  {id:'ireda',sym:'IREDA',name:'IREDA',exchange:'NSE',sector:''},
-  {id:'bajaj_auto',sym:'BAJAJ-AUTO',name:'BAJAJ-AUTO',exchange:'BSE',sector:''},
-  {id:'bajajhcare',sym:'BAJAJHCARE',name:'BAJAJHCARE',exchange:'NSE',sector:''},
-  {id:'symphony',sym:'SYMPHONY',name:'SYMPHONY',exchange:'NSE',sector:''},
-  {id:'iolcp',sym:'IOLCP',name:'IOLCP',exchange:'NSE',sector:''},
-  {id:'shilgravq',sym:'SHILGRAVQ',name:'SHILGRAVQ',exchange:'BSE',sector:''},
-  {id:'tejasnet',sym:'TEJASNET',name:'TEJASNET',exchange:'BSE',sector:''},
-  {id:'jkpaper',sym:'JKPAPER',name:'JKPAPER',exchange:'BSE',sector:''},
-  {id:'ucobank',sym:'UCOBANK',name:'UCOBANK',exchange:'BSE',sector:''},
-  {id:'stallion',sym:'STALLION',name:'STALLION',exchange:'BSE',sector:''},
-  {id:'styrenix',sym:'STYRENIX',name:'STYRENIX',exchange:'NSE',sector:''},
-  {id:'mcel',sym:'MCEL',name:'MCEL',exchange:'BSE',sector:''},
-  {id:'lichsgfin',sym:'LICHSGFIN',name:'LICHSGFIN',exchange:'BSE',sector:''},
-  {id:'pfc',sym:'PFC',name:'PFC',exchange:'BSE',sector:''},
-  {id:'zaggle',sym:'ZAGGLE',name:'ZAGGLE',exchange:'NSE',sector:''},
-  {id:'kirlpnu',sym:'KIRLPNU',name:'KIRLPNU',exchange:'NSE',sector:''},
-  {id:'isgec',sym:'ISGEC',name:'ISGEC',exchange:'NSE',sector:''},
-  {id:'gna',sym:'GNA',name:'GNA',exchange:'NSE',sector:''},
-  {id:'donear',sym:'DONEAR',name:'DONEAR',exchange:'NSE',sector:''},
-  {id:'belrise',sym:'BELRISE',name:'BELRISE',exchange:'NSE',sector:''},
-  {id:'tatainvest',sym:'TATAINVEST',name:'TATAINVEST',exchange:'BSE',sector:''},
-  {id:'pgfoilq',sym:'PGFOILQ',name:'PGFOILQ',exchange:'BSE',sector:''},
-  {id:'aeroflex',sym:'AEROFLEX',name:'AEROFLEX',exchange:'NSE',sector:''},
-  {id:'adanigreen',sym:'ADANIGREEN',name:'ADANIGREEN',exchange:'BSE',sector:''},
-  {id:'smlmah',sym:'SMLMAH',name:'SMLMAH',exchange:'BSE',sector:''},
-  {id:'elprointl',sym:'ELPROINTL',name:'ELPROINTL',exchange:'BSE',sector:''},
-  {id:'cninfotech',sym:'CNINFOTECH',name:'CNINFOTECH',exchange:'BSE',sector:''},
-  {id:'geship',sym:'GESHIP',name:'GESHIP',exchange:'NSE',sector:''},
-  {id:'renuka',sym:'RENUKA',name:'RENUKA',exchange:'BSE',sector:''},
-  {id:'irb',sym:'IRB',name:'IRB',exchange:'NSE',sector:''},
-  {id:'morepenlab',sym:'MOREPENLAB',name:'MOREPENLAB',exchange:'NSE',sector:''},
-  {id:'nhpc',sym:'NHPC',name:'NHPC',exchange:'NSE',sector:''},
-  {id:'idfcfirstb',sym:'IDFCFIRSTB',name:'IDFCFIRSTB',exchange:'BSE',sector:''},
-  {id:'idbi',sym:'IDBI',name:'IDBI',exchange:'NSE',sector:''},
-  {id:'shrirampps',sym:'SHRIRAMPPS',name:'SHRIRAMPPS',exchange:'NSE',sector:''},
-  {id:'sjvn',sym:'SJVN',name:'SJVN',exchange:'NSE',sector:''},
-  {id:'dolatalgo',sym:'DOLATALGO',name:'DOLATALGO',exchange:'NSE',sector:''},
-  {id:'ntpcgreen',sym:'NTPCGREEN',name:'NTPCGREEN',exchange:'NSE',sector:''},
-  {id:'canbk',sym:'CANBK',name:'CANBK',exchange:'NSE',sector:''},
-  {id:'bajajhfl',sym:'BAJAJHFL',name:'BAJAJHFL',exchange:'BSE',sector:''},
-  {id:'yesbank',sym:'YESBANK',name:'YESBANK',exchange:'NSE',sector:''},
-  {id:'irfc',sym:'IRFC',name:'IRFC',exchange:'NSE',sector:''},
-  {id:'zeel',sym:'ZEEL',name:'ZEEL',exchange:'NSE',sector:''},
-  {id:'ioc',sym:'IOC',name:'IOC',exchange:'NSE',sector:''},
-  {id:'gppl',sym:'GPPL',name:'GPPL',exchange:'NSE',sector:''},
-  {id:'mufti',sym:'MUFTI',name:'MUFTI',exchange:'NSE',sector:''},
-  {id:'vprpl',sym:'VPRPL',name:'VPRPL',exchange:'NSE',sector:''},
-  {id:'inoxwind',sym:'INOXWIND',name:'INOXWIND',exchange:'BSE',sector:''},
-  {id:'arisinfra',sym:'ARISINFRA',name:'ARISINFRA',exchange:'NSE',sector:''},
-  {id:'gail',sym:'GAIL',name:'GAIL',exchange:'NSE',sector:''},
-  {id:'exicom',sym:'EXICOM',name:'EXICOM',exchange:'NSE',sector:''},
-  {id:'lxchem',sym:'LXCHEM',name:'LXCHEM',exchange:'NSE',sector:''},
-  {id:'balmlawrie',sym:'BALMLAWRIE',name:'BALMLAWRIE',exchange:'NSE',sector:''},
-  {id:'ikio',sym:'IKIO',name:'IKIO',exchange:'NSE',sector:''},
-  {id:'vipulorg',sym:'VIPULORG',name:'VIPULORG',exchange:'BSE',sector:''},
-  {id:'enginersin',sym:'ENGINERSIN',name:'ENGINERSIN',exchange:'NSE',sector:''},
-  {id:'bankbaroda',sym:'BANKBARODA',name:'BANKBARODA',exchange:'NSE',sector:''},
-  {id:'ongc',sym:'ONGC',name:'ONGC',exchange:'NSE',sector:''},
-  {id:'bhel',sym:'BHEL',name:'BHEL',exchange:'NSE',sector:''},
-  {id:'dcxindia',sym:'DCXINDIA',name:'DCXINDIA',exchange:'NSE',sector:''},
-  {id:'sanghvimov',sym:'SANGHVIMOV',name:'SANGHVIMOV',exchange:'NSE',sector:''},
-  {id:'uds',sym:'UDS',name:'UDS',exchange:'NSE',sector:''},
-  {id:'jswinfra',sym:'JSWINFRA',name:'JSWINFRA',exchange:'NSE',sector:''},
-  {id:'iti',sym:'ITI',name:'ITI',exchange:'NSE',sector:''},
-  {id:'ntpc',sym:'NTPC',name:'NTPC',exchange:'NSE',sector:''},
-  {id:'exideind',sym:'EXIDEIND',name:'EXIDEIND',exchange:'NSE',sector:''},
-  {id:'coalindia',sym:'COALINDIA',name:'COALINDIA',exchange:'NSE',sector:''},
-  {id:'rvnl',sym:'RVNL',name:'RVNL',exchange:'NSE',sector:''},
-  {id:'tatapower',sym:'TATAPOWER',name:'TATAPOWER',exchange:'NSE',sector:''},
-  {id:'bel',sym:'BEL',name:'BEL',exchange:'NSE',sector:''},
-  {id:'pcbl',sym:'PCBL',name:'PCBL',exchange:'NSE',sector:''},
-  {id:'wpil',sym:'WPIL',name:'WPIL',exchange:'BSE',sector:''},
-  {id:'dlinkindia',sym:'DLINKINDIA',name:'DLINKINDIA',exchange:'NSE',sector:''},
-  {id:'hpl',sym:'HPL',name:'HPL',exchange:'NSE',sector:''},
-  {id:'akums',sym:'AKUMS',name:'AKUMS',exchange:'NSE',sector:''},
-  {id:'triturbine',sym:'TRITURBINE',name:'TRITURBINE',exchange:'NSE',sector:''},
-  {id:'emslimited',sym:'EMSLIMITED',name:'EMSLIMITED',exchange:'NSE',sector:''},
-  {id:'dharmaj',sym:'DHARMAJ',name:'DHARMAJ',exchange:'BSE',sector:''},
-  {id:'genesys',sym:'GENESYS',name:'GENESYS',exchange:'NSE',sector:''},
-  {id:'wonderla',sym:'WONDERLA',name:'WONDERLA',exchange:'NSE',sector:''},
-  {id:'tanla',sym:'TANLA',name:'TANLA',exchange:'NSE',sector:''},
-  {id:'tatatech',sym:'TATATECH',name:'TATATECH',exchange:'NSE',sector:''},
-  {id:'asahiindia',sym:'ASAHIINDIA',name:'ASAHIINDIA',exchange:'NSE',sector:''},
-  {id:'highene',sym:'HIGHENE',name:'HIGHENE',exchange:'BSE',sector:''},
-  {id:'jklakshmi',sym:'JKLAKSHMI',name:'JKLAKSHMI',exchange:'NSE',sector:''},
-  {id:'welcorp',sym:'WELCORP',name:'WELCORP',exchange:'NSE',sector:''},
-  {id:'titagarh',sym:'TITAGARH',name:'TITAGARH',exchange:'NSE',sector:''},
-  {id:'are_m',sym:'ARE&M',name:'ARE&M',exchange:'NSE',sector:''},
-  {id:'liquidbees',sym:'LIQUIDBEES',name:'LIQUIDBEES',exchange:'NSE',sector:''},
-  {id:'premierene',sym:'PREMIERENE',name:'PREMIERENE',exchange:'NSE',sector:''},
-  {id:'voltas',sym:'VOLTAS',name:'VOLTAS',exchange:'NSE',sector:''},
-  {id:'paras',sym:'PARAS',name:'PARAS',exchange:'NSE',sector:''},
-  {id:'mtartech',sym:'MTARTECH',name:'MTARTECH',exchange:'NSE',sector:''},
-  {id:'cdsl',sym:'CDSL',name:'CDSL',exchange:'NSE',sector:''},
-  {id:'cochinship',sym:'COCHINSHIP',name:'COCHINSHIP',exchange:'BSE',sector:''},
-  {id:'anup',sym:'ANUP',name:'ANUP',exchange:'NSE',sector:''},
-  {id:'grse',sym:'GRSE',name:'GRSE',exchange:'NSE',sector:''},
-  {id:'mazdock',sym:'MAZDOCK',name:'MAZDOCK',exchange:'NSE',sector:''},
-  {id:'siemens',sym:'SIEMENS',name:'SIEMENS',exchange:'NSE',sector:''},
-  {id:'mafatind',sym:'MAFATIND',name:'MAFATIND',exchange:'BSE',sector:''},
-  {id:'lt',sym:'LT',name:'LT',exchange:'NSE',sector:''},
-  {id:'dmart',sym:'DMART',name:'DMART',exchange:'NSE',sector:''},
-  {id:'zuari',sym:'ZUARI',name:'ZUARI',exchange:'BSE',sector:''},
-  {id:'hal',sym:'HAL',name:'HAL',exchange:'NSE',sector:''},
-  {id:'abb',sym:'ABB',name:'ABB',exchange:'NSE',sector:''},
-  {id:'aparinds',sym:'APARINDS',name:'APARINDS',exchange:'NSE',sector:''},
-  {id:'voltamp',sym:'VOLTAMP',name:'VOLTAMP',exchange:'NSE',sector:''},
-  // ── NIFTY 50 / LARGE CAP ──────────────────────────────────
-  {id:'reliance',sym:'RELIANCE',name:'Reliance Industries',exchange:'NSE',sector:'Energy'},
-  {id:'tcs_nse',sym:'TCS',name:'Tata Consultancy Services',exchange:'NSE',sector:'IT'},
-  {id:'hdfcbank_n',sym:'HDFCBANK',name:'HDFC Bank',exchange:'NSE',sector:'Banking'},
-  {id:'infy',sym:'INFY',name:'Infosys',exchange:'NSE',sector:'IT'},
-  {id:'icicibank',sym:'ICICIBANK',name:'ICICI Bank',exchange:'NSE',sector:'Banking'},
-  {id:'hindunilvr',sym:'HINDUNILVR',name:'Hindustan Unilever',exchange:'NSE',sector:'FMCG'},
-  {id:'bajfinance',sym:'BAJFINANCE',name:'Bajaj Finance',exchange:'NSE',sector:'NBFC'},
-  {id:'sbin',sym:'SBIN',name:'State Bank of India',exchange:'NSE',sector:'Banking'},
-  {id:'axisbank',sym:'AXISBANK',name:'Axis Bank',exchange:'NSE',sector:'Banking'},
-  {id:'kotakbank',sym:'KOTAKBANK',name:'Kotak Mahindra Bank',exchange:'NSE',sector:'Banking'},
-  {id:'lt_nse',sym:'LT',name:'Larsen & Toubro',exchange:'NSE',sector:'Infra'},
-  {id:'hcltech',sym:'HCLTECH',name:'HCL Technologies',exchange:'NSE',sector:'IT'},
-  {id:'wipro',sym:'WIPRO',name:'Wipro',exchange:'NSE',sector:'IT'},
-  {id:'asianpaint',sym:'ASIANPAINT',name:'Asian Paints',exchange:'NSE',sector:'Consumer'},
-  {id:'maruti',sym:'MARUTI',name:'Maruti Suzuki',exchange:'NSE',sector:'Auto'},
-  {id:'bajajfinsv',sym:'BAJAJFINSV',name:'Bajaj Finserv',exchange:'NSE',sector:'NBFC'},
-  {id:'titan',sym:'TITAN',name:'Titan Company',exchange:'NSE',sector:'Consumer'},
-  {id:'sunpharma',sym:'SUNPHARMA',name:'Sun Pharma',exchange:'NSE',sector:'Pharma'},
-  {id:'tatasteel_n',sym:'TATASTEEL',name:'Tata Steel',exchange:'NSE',sector:'Metals'},
-  {id:'ntpc',sym:'NTPC',name:'NTPC',exchange:'NSE',sector:'Energy'},
-  {id:'powergrid',sym:'POWERGRID',name:'Power Grid Corp',exchange:'NSE',sector:'Energy'},
-  {id:'ongc',sym:'ONGC',name:'ONGC',exchange:'NSE',sector:'Energy'},
-  {id:'coalindia',sym:'COALINDIA',name:'Coal India',exchange:'NSE',sector:'Metals'},
-  {id:'jswsteel',sym:'JSWSTEEL',name:'JSW Steel',exchange:'NSE',sector:'Metals'},
-  {id:'tatamotors',sym:'TATAMOTORS',name:'Tata Motors',exchange:'NSE',sector:'Auto'},
-  {id:'ultracemco',sym:'ULTRACEMCO',name:'UltraTech Cement',exchange:'NSE',sector:'Cement'},
-  {id:'adaniports_n',sym:'ADANIPORTS',name:'Adani Ports',exchange:'NSE',sector:'Infra'},
-  {id:'adanient_n',sym:'ADANIENT',name:'Adani Enterprises',exchange:'NSE',sector:'Infra'},
-  {id:'grasim',sym:'GRASIM',name:'Grasim Industries',exchange:'NSE',sector:'Cement'},
-  {id:'indusindbk_n',sym:'INDUSINDBK',name:'IndusInd Bank',exchange:'NSE',sector:'Banking'},
-  {id:'drreddy',sym:'DRREDDY',name:"Dr Reddy's Labs",exchange:'NSE',sector:'Pharma'},
-  {id:'cipla',sym:'CIPLA',name:'Cipla',exchange:'NSE',sector:'Pharma'},
-  {id:'hdfclife',sym:'HDFCLIFE',name:'HDFC Life Insurance',exchange:'NSE',sector:'Insurance'},
-  {id:'sbilife',sym:'SBILIFE',name:'SBI Life Insurance',exchange:'NSE',sector:'Insurance'},
-  {id:'techm',sym:'TECHM',name:'Tech Mahindra',exchange:'NSE',sector:'IT'},
-  {id:'nestleind',sym:'NESTLEIND',name:'Nestle India',exchange:'NSE',sector:'FMCG'},
-  {id:'britannia',sym:'BRITANNIA',name:'Britannia Industries',exchange:'NSE',sector:'FMCG'},
-  {id:'heromotoco_n',sym:'HEROMOTOCO',name:'Hero MotoCorp',exchange:'NSE',sector:'Auto'},
-  {id:'eichermot',sym:'EICHERMOT',name:'Eicher Motors',exchange:'NSE',sector:'Auto'},
-  {id:'bajaj_auto',sym:'BAJAJ-AUTO',name:'Bajaj Auto',exchange:'NSE',sector:'Auto'},
-  {id:'apollohosp',sym:'APOLLOHOSP',name:'Apollo Hospitals',exchange:'NSE',sector:'Healthcare'},
-  {id:'trent',sym:'TRENT',name:'Trent',exchange:'NSE',sector:'Consumer'},
-  {id:'hindalco_n',sym:'HINDALCO',name:'Hindalco Industries',exchange:'NSE',sector:'Metals'},
-  {id:'bpcl',sym:'BPCL',name:'BPCL',exchange:'NSE',sector:'Energy'},
-  {id:'ioc',sym:'IOC',name:'Indian Oil Corp',exchange:'NSE',sector:'Energy'},
-  {id:'hindpetro',sym:'HINDPETRO',name:'Hindustan Petroleum',exchange:'NSE',sector:'Energy'},
-  {id:'gail_n',sym:'GAIL',name:'GAIL India',exchange:'NSE',sector:'Energy'},
-  {id:'shreecem',sym:'SHREECEM',name:'Shree Cement',exchange:'NSE',sector:'Cement'},
-  {id:'acc_n',sym:'ACC',name:'ACC Cement',exchange:'NSE',sector:'Cement'},
-  // ── Banking & Finance ─────────────────────────────────────
-  {id:'pnb',sym:'PNB',name:'Punjab National Bank',exchange:'NSE',sector:'Banking'},
-  {id:'bankbaroda',sym:'BANKBARODA',name:'Bank of Baroda',exchange:'NSE',sector:'Banking'},
-  {id:'canbk_n',sym:'CANBK',name:'Canara Bank',exchange:'NSE',sector:'Banking'},
-  {id:'unionbank',sym:'UNIONBANK',name:'Union Bank of India',exchange:'NSE',sector:'Banking'},
-  {id:'idfcfirstb_n',sym:'IDFCFIRSTB',name:'IDFC First Bank',exchange:'NSE',sector:'Banking'},
-  {id:'federalbnk',sym:'FEDERALBNK',name:'Federal Bank',exchange:'NSE',sector:'Banking'},
-  {id:'rblbank',sym:'RBLBANK',name:'RBL Bank',exchange:'NSE',sector:'Banking'},
-  {id:'aubank',sym:'AUBANK',name:'AU Small Finance Bank',exchange:'NSE',sector:'Banking'},
-  {id:'idbi',sym:'IDBI',name:'IDBI Bank',exchange:'NSE',sector:'Banking'},
-  {id:'ucobank_n',sym:'UCOBANK',name:'UCO Bank',exchange:'NSE',sector:'Banking'},
-  {id:'mahabank',sym:'MAHABANK',name:'Bank of Maharashtra',exchange:'NSE',sector:'Banking'},
-  {id:'cholafin',sym:'CHOLAFIN',name:'Cholamandalam Finance',exchange:'NSE',sector:'NBFC'},
-  {id:'muthootfin',sym:'MUTHOOTFIN',name:'Muthoot Finance',exchange:'NSE',sector:'NBFC'},
-  {id:'manappuram',sym:'MANAPPURAM',name:'Manappuram Finance',exchange:'NSE',sector:'NBFC'},
-  {id:'hdfcamc_n',sym:'HDFCAMC',name:'HDFC AMC',exchange:'NSE',sector:'Finance'},
-  {id:'angelone',sym:'ANGELONE',name:'Angel One',exchange:'NSE',sector:'Finance'},
-  {id:'icicigi',sym:'ICICIGI',name:'ICICI General Insurance',exchange:'NSE',sector:'Insurance'},
-  {id:'lici',sym:'LICI',name:'LIC of India',exchange:'NSE',sector:'Insurance'},
-  {id:'jiofin',sym:'JIOFIN',name:'Jio Financial Services',exchange:'NSE',sector:'Finance'},
-  {id:'cdsl_n',sym:'CDSL',name:'CDSL',exchange:'NSE',sector:'Finance'},
-  {id:'bse_stock',sym:'BSE',name:'BSE Ltd',exchange:'NSE',sector:'Finance'},
-  {id:'crisil',sym:'CRISIL',name:'CRISIL',exchange:'NSE',sector:'Finance'},
-  {id:'360one',sym:'360ONE',name:'360 One WAM',exchange:'NSE',sector:'Finance'},
-  {id:'iex_n',sym:'IEX',name:'Indian Energy Exchange',exchange:'NSE',sector:'Finance'},
-  {id:'shrirampps',sym:'SHRIRAMPPS',name:'Shriram Finance',exchange:'NSE',sector:'NBFC'},
-  {id:'sundarmfin',sym:'SUNDARMFIN',name:'Sundaram Finance',exchange:'NSE',sector:'NBFC'},
-  // ── IT / Tech ─────────────────────────────────────────────
-  {id:'ltim',sym:'LTIM',name:'LTIMindtree',exchange:'NSE',sector:'IT'},
-  {id:'mphasis',sym:'MPHASIS',name:'Mphasis',exchange:'NSE',sector:'IT'},
-  {id:'persistent',sym:'PERSISTENT',name:'Persistent Systems',exchange:'NSE',sector:'IT'},
-  {id:'coforge',sym:'COFORGE',name:'Coforge',exchange:'NSE',sector:'IT'},
-  {id:'kpittech_n',sym:'KPITTECH',name:'KPIT Technologies',exchange:'NSE',sector:'IT'},
-  {id:'naukri',sym:'NAUKRI',name:'Info Edge (Naukri)',exchange:'NSE',sector:'IT'},
-  {id:'tataelxsi',sym:'TATAELXSI',name:'Tata Elxsi',exchange:'NSE',sector:'IT'},
-  {id:'cyient',sym:'CYIENT',name:'Cyient',exchange:'NSE',sector:'IT'},
-  {id:'zomato',sym:'ZOMATO',name:'Zomato',exchange:'NSE',sector:'Consumer'},
-  {id:'nykaa',sym:'NYKAA',name:'Nykaa',exchange:'NSE',sector:'Consumer'},
-  // ── Pharma & Healthcare ───────────────────────────────────
-  {id:'divislab',sym:'DIVISLAB',name:"Divi's Laboratories",exchange:'NSE',sector:'Pharma'},
-  {id:'auropharma',sym:'AUROPHARMA',name:'Aurobindo Pharma',exchange:'NSE',sector:'Pharma'},
-  {id:'lupin',sym:'LUPIN',name:'Lupin',exchange:'NSE',sector:'Pharma'},
-  {id:'torntpharm',sym:'TORNTPHARM',name:'Torrent Pharma',exchange:'NSE',sector:'Pharma'},
-  {id:'alkem',sym:'ALKEM',name:'Alkem Laboratories',exchange:'NSE',sector:'Pharma'},
-  {id:'ipcalab',sym:'IPCALAB',name:'IPCA Laboratories',exchange:'NSE',sector:'Pharma'},
-  {id:'maxhealth',sym:'MAXHEALTH',name:'Max Healthcare',exchange:'NSE',sector:'Healthcare'},
-  // ── Auto ──────────────────────────────────────────────────
-  {id:'tvsmotor',sym:'TVSMOTOR',name:'TVS Motor',exchange:'NSE',sector:'Auto'},
-  {id:'mahindra',sym:'M&M',name:'Mahindra & Mahindra',exchange:'NSE',sector:'Auto'},
-  {id:'motherson_n',sym:'MOTHERSON',name:'Samvardhana Motherson',exchange:'NSE',sector:'Auto'},
-  {id:'mrf',sym:'MRF',name:'MRF',exchange:'NSE',sector:'Auto'},
-  {id:'apollotyre',sym:'APOLLOTYRE',name:'Apollo Tyres',exchange:'NSE',sector:'Auto'},
-  {id:'ceatltd',sym:'CEATLTD',name:'CEAT',exchange:'NSE',sector:'Auto'},
-  {id:'balkrisind',sym:'BALKRISIND',name:'Balkrishna Industries',exchange:'NSE',sector:'Auto'},
-  {id:'boschltd',sym:'BOSCHLTD',name:'Bosch',exchange:'NSE',sector:'Auto'},
-  // ── FMCG & Consumer ───────────────────────────────────────
-  {id:'dabur',sym:'DABUR',name:'Dabur India',exchange:'NSE',sector:'FMCG'},
-  {id:'marico',sym:'MARICO',name:'Marico',exchange:'NSE',sector:'FMCG'},
-  {id:'colpal',sym:'COLPAL',name:'Colgate-Palmolive',exchange:'NSE',sector:'FMCG'},
-  {id:'vbl',sym:'VBL',name:'Varun Beverages',exchange:'NSE',sector:'FMCG'},
-  {id:'tataconsum',sym:'TATACONSUM',name:'Tata Consumer Products',exchange:'NSE',sector:'FMCG'},
-  {id:'godrejcp',sym:'GODREJCP',name:'Godrej Consumer Products',exchange:'NSE',sector:'FMCG'},
-  {id:'dmart_n',sym:'DMART',name:'Avenue Supermarts (DMart)',exchange:'NSE',sector:'Retail'},
-  {id:'pidilitind',sym:'PIDILITIND',name:'Pidilite Industries',exchange:'NSE',sector:'Consumer'},
-  {id:'havells',sym:'HAVELLS',name:'Havells India',exchange:'NSE',sector:'Consumer'},
-  {id:'dixon',sym:'DIXON',name:'Dixon Technologies',exchange:'NSE',sector:'Consumer'},
-  // ── Energy ────────────────────────────────────────────────
-  {id:'adanigreen_n',sym:'ADANIGREEN',name:'Adani Green Energy',exchange:'NSE',sector:'Energy'},
-  {id:'adanipower_n',sym:'ADANIPOWER',name:'Adani Power',exchange:'NSE',sector:'Energy'},
-  {id:'tatapower_n',sym:'TATAPOWER',name:'Tata Power',exchange:'NSE',sector:'Energy'},
-  {id:'torntpower',sym:'TORNTPOWER',name:'Torrent Power',exchange:'NSE',sector:'Energy'},
-  {id:'igl',sym:'IGL',name:'Indraprastha Gas',exchange:'NSE',sector:'Energy'},
-  {id:'petronet',sym:'PETRONET',name:'Petronet LNG',exchange:'NSE',sector:'Energy'},
-  {id:'atgl',sym:'ATGL',name:'Adani Total Gas',exchange:'NSE',sector:'Energy'},
-  {id:'oil_india',sym:'OIL',name:'Oil India',exchange:'NSE',sector:'Energy'},
-  // ── Metals ────────────────────────────────────────────────
-  {id:'vedl_n',sym:'VEDL',name:'Vedanta',exchange:'NSE',sector:'Metals'},
-  {id:'hindzinc',sym:'HINDZINC',name:'Hindustan Zinc',exchange:'NSE',sector:'Metals'},
-  {id:'sail_n',sym:'SAIL',name:'SAIL',exchange:'NSE',sector:'Metals'},
-  // ── Infra & Realty ────────────────────────────────────────
-  {id:'dlf',sym:'DLF',name:'DLF',exchange:'NSE',sector:'Realty'},
-  {id:'godrejprop',sym:'GODREJPROP',name:'Godrej Properties',exchange:'NSE',sector:'Realty'},
-  {id:'prestige',sym:'PRESTIGE',name:'Prestige Estates',exchange:'NSE',sector:'Realty'},
-  {id:'irctc_n',sym:'IRCTC',name:'IRCTC',exchange:'NSE',sector:'Consumer'},
-  {id:'concor',sym:'CONCOR',name:'Container Corp',exchange:'NSE',sector:'Infra'},
-  // ── Defence ───────────────────────────────────────────────
-  {id:'hal_n',sym:'HAL',name:'Hindustan Aeronautics',exchange:'NSE',sector:'Defence'},
-  {id:'bhel_n',sym:'BHEL',name:'BHEL',exchange:'NSE',sector:'Defence'},
-  {id:'mazdock_n',sym:'MAZDOCK',name:'Mazagon Dock',exchange:'NSE',sector:'Defence'},
-  // ── Telecom & Media ───────────────────────────────────────
-  {id:'bhartiartl',sym:'BHARTIARTL',name:'Bharti Airtel',exchange:'NSE',sector:'Telecom'},
-  {id:'industower',sym:'INDUSTOWER',name:'Indus Towers',exchange:'NSE',sector:'Telecom'},
-  {id:'suntv',sym:'SUNTV',name:'Sun TV Network',exchange:'NSE',sector:'Media'},
-  {id:'pvrinox',sym:'PVRINOX',name:'PVR Inox',exchange:'NSE',sector:'Media'},
-  // ── Chemicals ─────────────────────────────────────────────
-  {id:'srf',sym:'SRF',name:'SRF',exchange:'NSE',sector:'Chemicals'},
-  {id:'deepakntr',sym:'DEEPAKNTR',name:'Deepak Nitrite',exchange:'NSE',sector:'Chemicals'},
-  {id:'piind',sym:'PIIND',name:'PI Industries',exchange:'NSE',sector:'Chemicals'},
-  {id:'tatachem',sym:'TATACHEM',name:'Tata Chemicals',exchange:'NSE',sector:'Chemicals'},
-  // ── EV & Renewables ───────────────────────────────────────
-  {id:'abb_n',sym:'ABB',name:'ABB India',exchange:'NSE',sector:'EV'},
-  {id:'siemens',sym:'SIEMENS',name:'Siemens India',exchange:'NSE',sector:'EV'},
-];
-
-function fmt(n,d=2){return n==null?'—':Number(n).toLocaleString('en-IN',{minimumFractionDigits:d,maximumFractionDigits:d});}
-function fmtChg(n){if(n==null)return'—';return(n>=0?'+':'')+n.toFixed(2);}
-function fmtPct(n){if(n==null)return'—';return(n>=0?'+':'')+n.toFixed(2)+'%';}
-function fmtCr(n){if(!n)return'—';if(n>=1e12)return'₹'+(n/1e12).toFixed(2)+'L Cr';if(n>=1e9)return'₹'+(n/1e7).toFixed(0)+' Cr';return'₹'+n.toLocaleString();}
-
-// ═══════════════════════════════════════════════════════════
-// LIVE PRICE HOOK — Real Yahoo Finance via proxy
-// ═══════════════════════════════════════════════════════════
-function useLivePrices(ids) {
-  const [prices, setPrices]   = useState({});
-  const [status, setStatus]   = useState('idle');
-  const [lastUpdated, setLastUpdated] = useState(null);
-  const [countdown, setCountdown] = useState(REFRESH_INTERVAL);
-  const [proxyUrl, setProxyUrl] = useState(PROXY_URL);
-  const timerRef = useRef(null);
-  const countRef = useRef(null);
-
-  const fetchPrices = useCallback(async (overrideUrl) => {
-    if (!ids.length) return;
-    const base = overrideUrl || proxyUrl;
-    setStatus('loading');
-    try {
-      const res = await fetch(`${base}/quotes?ids=${ids.join(',')}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const map = {};
-      data.forEach(q => { if (!q.error) map[q.id] = q; });
-      setPrices(prev => ({...prev, ...map}));
-      setStatus('ok');
-      setLastUpdated(new Date());
-      setCountdown(REFRESH_INTERVAL);
-    } catch(e) {
-      setStatus('error');
-    }
-  }, [ids.join(','), proxyUrl]);
-
-  useEffect(() => {
-    fetchPrices();
-    timerRef.current = setInterval(() => fetchPrices(), REFRESH_INTERVAL * 1000);
-    return () => clearInterval(timerRef.current);
-  }, [fetchPrices]);
-
-  // Countdown ticker
-  useEffect(() => {
-    countRef.current = setInterval(() => {
-      setCountdown(c => c <= 1 ? REFRESH_INTERVAL : c - 1);
-    }, 1000);
-    return () => clearInterval(countRef.current);
-  }, []);
-
-  return { prices, status, lastUpdated, countdown, refresh: () => fetchPrices(), setProxyUrl };
-}
-
-// ═══════════════════════════════════════════════════════════
-// STOCK SEARCH — Pure local, starts-with only, zero API calls
-// ═══════════════════════════════════════════════════════════
-function useStockSearch(query, existingIds) {
-  const q = (query || '').trim().toLowerCase();
-  if (!q) return { results: [] };
-  const results = STOCKS_META.filter(o => {
-    if (existingIds.includes(o.id)) return false;
-    const sym  = (o.sym  || '').toLowerCase();
-    const name = (o.name || '').toLowerCase();
-    return sym.startsWith(q) || name.startsWith(q);
-  }).slice(0, 12);
-  return { results };
-}
-
-// ═══════════════════════════════════════════════════════════
-// FILTER HELPER
-// ═══════════════════════════════════════════════════════════
-// Toggle filters: each button cycles between asc/desc
-// filter state: 'Default' | 'Name-asc' | 'Name-desc' | 'Price-asc' | 'Price-desc' | 'Pct-asc' | 'Pct-desc'
-function applyFilter(items, originalItems, prices, filter) {
-  const gp = id => prices[id];
-  if (filter==='Default') return [...originalItems];
-  const arr = [...items];
-  if (filter==='Name-asc')  arr.sort((a,b)=>(a.name||a.sym||'').localeCompare(b.name||b.sym||''));
-  else if (filter==='Name-desc') arr.sort((a,b)=>(b.name||b.sym||'').localeCompare(a.name||a.sym||''));
-  else if (filter==='Price-asc') arr.sort((a,b)=>(gp(a.id)?.price||0)-(gp(b.id)?.price||0));
-  else if (filter==='Price-desc') arr.sort((a,b)=>(gp(b.id)?.price||0)-(gp(a.id)?.price||0));
-  else if (filter==='Pct-asc') arr.sort((a,b)=>(gp(a.id)?.changePct||0)-(gp(b.id)?.changePct||0));
-  else if (filter==='Pct-desc') arr.sort((a,b)=>(gp(b.id)?.changePct||0)-(gp(a.id)?.changePct||0));
-  // Portfolio P&L filters
-  else if (filter==='PnL-asc') arr.sort((a,b)=>{
-    const pa=gp(a.id), pb=gp(b.id);
-    const pnlA=(pa?pa.price:a.buyPrice)*a.buyQty - a.buyPrice*a.buyQty;
-    const pnlB=(pb?pb.price:b.buyPrice)*b.buyQty - b.buyPrice*b.buyQty;
-    return pnlA-pnlB;
-  });
-  else if (filter==='PnL-desc') arr.sort((a,b)=>{
-    const pa=gp(a.id), pb=gp(b.id);
-    const pnlA=(pa?pa.price:a.buyPrice)*a.buyQty - a.buyPrice*a.buyQty;
-    const pnlB=(pb?pb.price:b.buyPrice)*b.buyQty - b.buyPrice*b.buyQty;
-    return pnlB-pnlA;
-  });
-  else if (filter==='PnLPct-asc') arr.sort((a,b)=>{
-    const pa=gp(a.id), pb=gp(b.id);
-    const pctA=((pa?pa.price:a.buyPrice)-a.buyPrice)/a.buyPrice*100;
-    const pctB=((pb?pb.price:b.buyPrice)-b.buyPrice)/b.buyPrice*100;
-    return pctA-pctB;
-  });
-  else if (filter==='PnLPct-desc') arr.sort((a,b)=>{
-    const pa=gp(a.id), pb=gp(b.id);
-    const pctA=((pa?pa.price:a.buyPrice)-a.buyPrice)/a.buyPrice*100;
-    const pctB=((pb?pb.price:b.buyPrice)-b.buyPrice)/b.buyPrice*100;
-    return pctB-pctA;
-  });
-  return arr;
-}
-
-// ═══════════════════════════════════════════════════════════
-// COMPONENTS
-// ═══════════════════════════════════════════════════════════
-
-function FilterBar({active, onChange, isPortfolio}) {
-  function toggle(base) {
-    if (active === base+'-asc') onChange(base+'-desc');
-    else if (active === base+'-desc') onChange('Default');
-    else onChange(base+'-asc');
-  }
-  function isActive(base) { return active===base+'-asc'||active===base+'-desc'; }
-  return h('div', {className:'filter-bar'},
-    h('div', {className:'filter-chip '+(active==='Default'?'active':''), onClick:()=>onChange('Default')}, 'Default'),
-    h('div', {className:'filter-chip '+(isActive('Name')?'active':''), onClick:()=>toggle('Name')},
-      active==='Name-asc'?'A → Z': active==='Name-desc'?'Z → A':'A - Z'
-    ),
-    isPortfolio
-      ? h(React.Fragment, null,
-          h('div', {className:'filter-chip '+(isActive('PnL')?'active':''), onClick:()=>toggle('PnL')},
-            'P&L ', active==='PnL-asc'?'↑':active==='PnL-desc'?'↓':'↕'
-          ),
-          h('div', {className:'filter-chip '+(isActive('PnLPct')?'active':''), onClick:()=>toggle('PnLPct')},
-            '%P&L ', active==='PnLPct-asc'?'↑':active==='PnLPct-desc'?'↓':'↕'
-          )
-        )
-      : h(React.Fragment, null,
-          h('div', {className:'filter-chip '+(isActive('Price')?'active':''), onClick:()=>toggle('Price')},
-            'Price ', active==='Price-asc'?'↑':active==='Price-desc'?'↓':'↕'
-          ),
-          h('div', {className:'filter-chip '+(isActive('Pct')?'active':''), onClick:()=>toggle('Pct')},
-            '% ', active==='Pct-asc'?'↑':active==='Pct-desc'?'↓':'↕'
-          )
-        )
-  );
-}
-
-// Sector → CSS class + label
-const SECTOR_MAP = {
-  'IT':'sec-IT','Banking':'sec-Banking','Energy':'sec-Energy',
-  'EV':'sec-EV','FMCG':'sec-FMCG','NBFC':'sec-NBFC',
-  'Metals':'sec-Metals','Pharma':'sec-Pharma','Auto':'sec-Auto','Consumer':'sec-Consumer',
-  'Telecom':'sec-Telecom','Insurance':'sec-Insurance','Finance':'sec-Finance',
-  'Healthcare':'sec-Healthcare','Infra':'sec-Infra','Realty':'sec-Realty',
-  'Cement':'sec-Cement','Chemicals':'sec-Chemicals','Textiles':'sec-Textiles',
-  'Media':'sec-Media','Defence':'sec-Defence','Logistics':'sec-Logistics',
-  'Retail':'sec-Retail','Agri':'sec-Agri',
-};
-const INDEX_EXCHANGE = {
-  'nifty50':'NSE','banknifty':'NSE','finnifty':'NSE','midcap':'NSE','smallcap':'NSE','niftyit':'NSE',
-  'sensex':'BSE','bankex':'BSE',
+  // ── Standard Large Cap / Nifty 50 ────────────────────────
+  reliance:'RELIANCE.NS', tcs_nse:'TCS.NS', hdfcbank_n:'HDFCBANK.NS',
+  infy:'INFY.NS', icicibank:'ICICIBANK.NS', hindunilvr:'HINDUNILVR.NS',
+  bajfinance:'BAJFINANCE.NS', sbin:'SBIN.NS', axisbank:'AXISBANK.NS',
+  kotakbank:'KOTAKBANK.NS', lt_nse:'LT.NS', hcltech:'HCLTECH.NS',
+  wipro:'WIPRO.NS', asianpaint:'ASIANPAINT.NS', maruti:'MARUTI.NS',
+  bajajfinsv:'BAJAJFINSV.NS', titan:'TITAN.NS', sunpharma:'SUNPHARMA.NS',
+  tatasteel_n:'TATASTEEL.NS', ntpc:'NTPC.NS', powergrid:'POWERGRID.NS',
+  ongc:'ONGC.NS', coalindia:'COALINDIA.NS', jswsteel:'JSWSTEEL.NS',
+  tatamotors:'TATAMOTORS.NS', ultracemco:'ULTRACEMCO.NS',
+  adaniports_n:'ADANIPORTS.NS', adanient_n:'ADANIENT.NS', grasim:'GRASIM.NS',
+  indusindbk_n:'INDUSINDBK.NS', drreddy:'DRREDDY.NS', cipla:'CIPLA.NS',
+  hdfclife:'HDFCLIFE.NS', sbilife:'SBILIFE.NS', techm:'TECHM.NS',
+  nestleind:'NESTLEIND.NS', britannia:'BRITANNIA.NS',
+  heromotoco_n:'HEROMOTOCO.NS', eichermot:'EICHERMOT.NS',
+  bajaj_auto:'BAJAJ-AUTO.NS', apollohosp:'APOLLOHOSP.NS', trent:'TRENT.NS',
+  hindalco_n:'HINDALCO.NS', bpcl:'BPCL.NS', ioc:'IOC.NS',
+  hindpetro:'HINDPETRO.NS', gail_n:'GAIL.NS', shreecem:'SHREECEM.NS',
+  acc_n:'ACC.NS',
+  pnb:'PNB.NS', bankbaroda:'BANKBARODA.NS', canbk_n:'CANBK.NS',
+  unionbank:'UNIONBANK.NS', idfcfirstb_n:'IDFCFIRSTB.NS', federalbnk:'FEDERALBNK.NS',
+  rblbank:'RBLBANK.NS', aubank:'AUBANK.NS', idbi:'IDBI.NS',
+  ucobank_n:'UCOBANK.NS', mahabank:'MAHABANK.NS',
+  cholafin:'CHOLAFIN.NS', muthootfin:'MUTHOOTFIN.NS', manappuram:'MANAPPURAM.NS',
+  hdfcamc_n:'HDFCAMC.NS', angelone:'ANGELONE.NS', icicigi:'ICICIGI.NS',
+  lici:'LICI.NS', jiofin:'JIOFIN.NS', cdsl_n:'CDSL.NS', bse_stock:'BSE.NS',
+  crisil:'CRISIL.NS', '360one':'360ONE.NS', iex_n:'IEX.NS',
+  shrirampps:'SHRIRAMPPS.NS', sundarmfin:'SUNDARMFIN.NS', tatacap:'TATACAP.NS',
+  ltim:'LTIM.NS', mphasis:'MPHASIS.NS', persistent:'PERSISTENT.NS',
+  coforge:'COFORGE.NS', kpittech_n:'KPITTECH.NS', naukri:'NAUKRI.NS',
+  tataelxsi:'TATAELXSI.NS', cyient:'CYIENT.NS', zomato:'ZOMATO.NS', nykaa:'NYKAA.NS',
+  divislab:'DIVISLAB.NS', auropharma:'AUROPHARMA.NS', lupin:'LUPIN.NS',
+  torntpharm:'TORNTPHARM.NS', alkem:'ALKEM.NS', ipcalab:'IPCALAB.NS', maxhealth:'MAXHEALTH.NS',
+  tvsmotor:'TVSMOTOR.NS', mahindra:'M&M.NS', motherson_n:'MOTHERSON.NS',
+  mrf:'MRF.NS', apollotyre:'APOLLOTYRE.NS', ceatltd:'CEATLTD.NS',
+  balkrisind:'BALKRISIND.NS', boschltd:'BOSCHLTD.NS',
+  dabur:'DABUR.NS', marico:'MARICO.NS', colpal:'COLPAL.NS', vbl:'VBL.NS',
+  tataconsum:'TATACONSUM.NS', godrejcp:'GODREJCP.NS', dmart_n:'DMART.NS',
+  pidilitind:'PIDILITIND.NS', havells:'HAVELLS.NS', dixon:'DIXON.NS',
+  adanigreen_n:'ADANIGREEN.NS', adanipower_n:'ADANIPOWER.NS', tatapower_n:'TATAPOWER.NS',
+  torntpower:'TORNTPOWER.NS', igl:'IGL.NS', petronet:'PETRONET.NS',
+  atgl:'ATGL.NS', oil_india:'OIL.NS',
+  vedl_n:'VEDL.NS', hindzinc:'HINDZINC.NS', sail_n:'SAIL.NS',
+  dlf:'DLF.NS', godrejprop:'GODREJPROP.NS', prestige:'PRESTIGE.NS',
+  irctc_n:'IRCTC.NS', concor:'CONCOR.NS',
+  hal_n:'HAL.NS', bhel_n:'BHEL.NS', mazdock_n:'MAZDOCK.NS',
+  bhartiartl:'BHARTIARTL.NS', industower:'INDUSTOWER.NS', suntv:'SUNTV.NS', pvrinox:'PVRINOX.NS',
+  srf:'SRF.NS', deepakntr:'DEEPAKNTR.NS', piind:'PIIND.NS', tatachem:'TATACHEM.NS',
+  abb_n:'ABB.NS', siemens:'SIEMENS.NS',
 };
 
-function PriceRow({item, p, isIndex, onPress, onRemove, holdingBadge}) {
-  const loaded = p && p.price;
-  const up = loaded && p.changePct >= 0;
-  const nameLabel = isIndex ? item.name : (item.sym || item.name);
-  const subLabel  = isIndex ? item.desc : item.name;
+function fetchYahoo(path) {
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: 'query1.finance.yahoo.com',
+      path,
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': '*/*',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Origin': 'https://finance.yahoo.com',
+        'Referer': 'https://finance.yahoo.com/',
+      }
+    };
 
-  // Flash animation
-  const prevPriceRef = useRef(null);
-  const [flashClass, setFlashClass] = useState('');
-  const [priceFlash, setPriceFlash] = useState('');
-  useEffect(() => {
-    if (!loaded) return;
-    const prev = prevPriceRef.current;
-    if (prev !== null && prev !== p.price) {
-      const dir = p.price > prev ? 'up' : 'dn';
-      setFlashClass(''); setPriceFlash('');
-      requestAnimationFrame(() => { setFlashClass('flash-'+dir); setPriceFlash('price-flash-'+dir); });
-    }
-    prevPriceRef.current = p.price;
-  }, [p && p.price]);
-
-  // Swipe to delete
-  const touchStartX = useRef(null);
-  const [swipeX, setSwipeX] = useState(0);
-  function onTouchStart(e) { touchStartX.current = e.touches[0].clientX; }
-  function onTouchMove(e) {
-    if (touchStartX.current === null) return;
-    const dx = touchStartX.current - e.touches[0].clientX;
-    if (dx > 8) setSwipeX(Math.min(dx, 80));
-    else if (dx < -5) setSwipeX(0);
-  }
-  function onTouchEnd() {
-    if (swipeX > 55) { onRemove(); }
-    else setSwipeX(0);
-    touchStartX.current = null;
-  }
-
-  // Sector badge — inline with subLabel
-  const sectorCls = isIndex
-    ? 'sector-badge sec-'+(INDEX_EXCHANGE[item.id]||'NSE')
-    : item.sector ? 'sector-badge '+(SECTOR_MAP[item.sector]||'') : '';
-  const sectorLabel = isIndex ? (INDEX_EXCHANGE[item.id]||'NSE') : (item.sector||'');
-
-  return h('div', {
-    className:'swipe-wrap '+(swipeX>10?'revealed':''),
-    onTouchStart, onTouchMove, onTouchEnd
-  },
-    h('div', {className:'swipe-delete-bg'}, '🗑 DELETE'),
-    h('div', {
-      className:'stock-row '+flashClass,
-      style:{transform:swipeX>0?`translateX(-${swipeX}px)`:'none', transition:swipeX===0?'transform 0.25s':'none'},
-      onClick: swipeX > 5 ? undefined : onPress,
-    },
-      h('div', {className:'stock-left'},
-        h('div', {className:'stock-name'},
-          nameLabel,
-          sectorLabel && h('span', {className:sectorCls}, sectorLabel),
-          holdingBadge && h('span', {className:'holding-badge'}, '⏱ '+holdingBadge)
-        ),
-        h('div', {className:'stock-sub'}, subLabel)
-      ),
-      h('div', {className:'stock-right'},
-        loaded
-          ? h('div', null,
-              h('div', {className:'stock-price '+priceFlash},
-                '₹'+fmt(p.price),
-                h('span', {className:'price-pct '+(up?'up':'dn')}, ' ('+fmtPct(p.changePct)+')')
-              ),
-              h('div', {className:'stock-change '+(up?'up':'dn')}, fmtChg(p.change))
-            )
-          : h('div', null,
-              h('div', {className:'skeleton', style:{width:70,height:16,marginBottom:4}}),
-              h('div', {className:'skeleton', style:{width:50,height:12}})
-            )
-      ),
-      h('div', {className:'remove-btn', onClick:e=>{e.stopPropagation();onRemove();}}, '×')
-    )
-  );
-}
-
-function RefreshBar({status, lastUpdated, countdown, onRefresh}) {
-  const timeStr = lastUpdated
-    ? lastUpdated.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'})
-    : '—';
-  return h('div', {className:'refresh-bar'},
-    h('span', null,
-      status==='loading' ? '⟳ Fetching...'
-      : status==='error' ? '⚠ Proxy offline'
-      : `Updated ${timeStr}`
-    ),
-    h('div', {style:{display:'flex',alignItems:'center',gap:8}},
-      status==='ok' && h('span', {className:'countdown'}, `⟳ ${countdown}s`),
-      h('button', {className:'refresh-btn', onClick:onRefresh}, 'Refresh')
-    )
-  );
-}
-
-function DetailModal({item, p, onClose, isIndex, proxyUrl}) {
-  const loaded = p && p.price;
-  const up = loaded && p.changePct >= 0;
-  const [view, setView] = useState('stats'); // 'stats' | 'chart'
-  const [chartRange, setChartRange] = useState('1d');
-  const [chartData, setChartData] = useState(null);
-  const [chartLoading, setChartLoading] = useState(false);
-  const [chartError, setChartError] = useState(null);
-
-  const RANGES = [
-    {label:'15m', range:'1d',  interval:'15m'},
-    {label:'1D',  range:'5d',  interval:'1d'},
-    {label:'1W',  range:'1mo', interval:'1wk'},
-    {label:'1M',  range:'6mo', interval:'1mo'},
-  ];
-
-  async function loadChart(range) {
-    setChartRange(range);
-    setChartLoading(true);
-    setChartError(null);
-    try {
-      const r = RANGES.find(x=>x.range===range);
-      const base = localStorage.getItem('proxyUrl')||'http://localhost:3001';
-      const res = await fetch(`${base}/chart?id=${item.id}&range=${r.range}&interval=${r.interval}`);
-      if (!res.ok) throw new Error('Server error');
-      const data = await res.json();
-      setChartData(data);
-    } catch(e) {
-      setChartError('Chart load nahi thayo');
-    }
-    setChartLoading(false);
-  }
-
-  useEffect(() => { if (view==='chart') loadChart('1d'); }, [view]);
-
-  // SVG Price Line Chart
-  function PriceChart({candles}) {
-    if (!candles || candles.length < 2) return h('div', {className:'chart-loading'}, 'Data nathi');
-    const W=380, H=130, PAD=8;
-    const closes = candles.map(c=>c.c);
-    const min = Math.min(...closes), max = Math.max(...closes);
-    const range = max - min || 1;
-    const pts = candles.map((c,i) => {
-      const x = PAD + (i/(candles.length-1))*(W-PAD*2);
-      const y = H - PAD - ((c.c-min)/range)*(H-PAD*2);
-      return `${x},${y}`;
-    }).join(' ');
-    const isUp = closes[closes.length-1] >= closes[0];
-    const color = isUp ? 'var(--green)' : 'var(--red)';
-    const fillId = 'grad'+item.id;
-    // Area fill points
-    const first = candles[0], last = candles[candles.length-1];
-    const x0 = PAD, xN = W-PAD;
-    const areaClose = `${x0},${H-PAD} ${pts} ${xN},${H-PAD}`;
-    return h('svg', {viewBox:`0 0 ${W} ${H}`, style:{width:'100%',height:H,display:'block'}},
-      h('defs', null,
-        h('linearGradient', {id:fillId, x1:'0',y1:'0',x2:'0',y2:'1'},
-          h('stop', {offset:'0%', stopColor:color, stopOpacity:'0.3'}),
-          h('stop', {offset:'100%', stopColor:color, stopOpacity:'0.02'})
-        )
-      ),
-      h('polygon', {points:areaClose, fill:`url(#${fillId})`}),
-      h('polyline', {points:pts, fill:'none', stroke:color, strokeWidth:'1.8', strokeLinejoin:'round', strokeLinecap:'round'})
-    );
-  }
-
-  // SVG Volume Bar Chart
-  function VolumeChart({candles}) {
-    if (!candles || candles.length < 2) return null;
-    const W=380, H=60, PAD=8;
-    const vols = candles.map(c=>c.v||0);
-    const maxV = Math.max(...vols, 1);
-    const barW = Math.max(1, (W-PAD*2)/candles.length - 1);
-    return h('svg', {viewBox:`0 0 ${W} ${H}`, style:{width:'100%',height:H,display:'block'}},
-      candles.map((c,i) => {
-        const x = PAD + i*((W-PAD*2)/candles.length);
-        const bH = ((c.v||0)/maxV)*(H-PAD);
-        const y = H-bH;
-        const color = c.c >= c.o ? 'var(--green)' : 'var(--red)';
-        return h('rect', {key:i, x, y, width:barW, height:bH, fill:color, opacity:'0.7'});
-      })
-    );
-  }
-
-  const pairs = isIndex ? [
-    ['PREV CLOSE', p?.prevClose ? '₹'+fmt(p.prevClose) : '—', '', 'OPEN', p?.open ? '₹'+fmt(p.open) : '—', ''],
-    ['DAY HIGH',   p?.dayHigh  ? '₹'+fmt(p.dayHigh)  : '—', 'up', 'DAY LOW', p?.dayLow ? '₹'+fmt(p.dayLow) : '—', 'dn'],
-    ['52W HIGH',   p?.fiftyTwoWkH ? '₹'+fmt(p.fiftyTwoWkH) : '—', 'up', '52W LOW', p?.fiftyTwoWkL ? '₹'+fmt(p.fiftyTwoWkL) : '—', 'dn'],
-  ] : [
-    ['PREV CLOSE', p?.prevClose ? '₹'+fmt(p.prevClose) : '—', '', 'OPEN', p?.open ? '₹'+fmt(p.open) : '—', ''],
-    ['DAY HIGH',   p?.dayHigh  ? '₹'+fmt(p.dayHigh)  : '—', 'up', 'DAY LOW', p?.dayLow ? '₹'+fmt(p.dayLow) : '—', 'dn'],
-    ['52W HIGH',   p?.fiftyTwoWkH ? '₹'+fmt(p.fiftyTwoWkH) : '—', 'up', '52W LOW', p?.fiftyTwoWkL ? '₹'+fmt(p.fiftyTwoWkL) : '—', 'dn'],
-    ['MKT CAP',    p?.mktCap ? fmtCr(p.mktCap) : '—', '', 'VOLUME', p?.volume ? p.volume.toLocaleString('en-IN') : '—', ''],
-    ['SECTOR',     item.sector||'—', '', 'P/E', p?.pe ? p.pe.toFixed(1)+'x' : '—', ''],
-  ];
-
-  return h('div', {className:'modal-overlay', onClick:e=>{if(e.target===e.currentTarget)onClose();}},
-    h('div', {className:'modal'},
-      h('div', {className:'modal-handle'}),
-      h('div', {className:'modal-header'},
-        h('button', {className:'modal-close', onClick:onClose}, '✕'),
-        h('div', {className:'modal-title'}, item.name),
-        h('div', {style:{marginTop:6,display:'flex',alignItems:'baseline',gap:8,flexWrap:'wrap'}},
-          h('span', {style:{fontSize:22,fontWeight:800,fontFamily:'var(--mono)'}}, loaded?'₹'+fmt(p.price):'—'),
-          loaded && h('span', {className:up?'up':'dn', style:{fontSize:13,fontFamily:'var(--mono)',fontWeight:700}},
-            fmtChg(p.change),' (',fmtPct(p.changePct),')'
-          )
-        )
-      ),
-      // Stats / Chart toggle
-      h('div', {className:'modal-view-tabs'},
-        h('div', {className:'modal-view-tab '+(view==='stats'?'active':''), onClick:()=>setView('stats')}, '📊 Stats'),
-        h('div', {className:'modal-view-tab '+(view==='chart'?'active':''), onClick:()=>setView('chart')}, '📈 Chart')
-      ),
-      // Stats view
-      view==='stats' && h('div', {style:{margin:'12px 16px 16px'}},
-        pairs.map(([ll,lv,lc,rl,rv,rc],i)=>
-          h('div', {key:i, style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:1,marginBottom:1}},
-            h('div', {style:{background:'var(--bg3)',padding:'11px 14px',borderRadius:i===0?'var(--radius-sm) 0 0 0':i===pairs.length-1?'0 0 0 var(--radius-sm)':'0'}},
-              h('div', {className:'stat-label'}, ll),
-              h('div', {className:'stat-val '+(lc||'')}, lv)
-            ),
-            h('div', {style:{background:'var(--bg3)',padding:'11px 14px',borderRadius:i===0?'0 var(--radius-sm) 0 0':i===pairs.length-1?'0 0 var(--radius-sm) 0':'0'}},
-              h('div', {className:'stat-label'}, rl),
-              h('div', {className:'stat-val '+(rc||'')}, rv)
-            )
-          )
-        )
-      ),
-      // Chart view
-      view==='chart' && h('div', {style:{paddingBottom:16}},
-        h('div', {className:'chart-tabs'},
-          RANGES.map(r =>
-            h('div', {key:r.range, className:'chart-tab '+(chartRange===r.range?'active':''),
-              onClick:()=>loadChart(r.range)
-            }, r.label)
-          )
-        ),
-        chartLoading && h('div', {className:'chart-loading'}, '⟳ Loading...'),
-        chartError && h('div', {className:'chart-loading', style:{color:'var(--red)'}}, chartError),
-        chartData && !chartLoading && h('div', null,
-          h('div', {className:'chart-wrap'},
-            h('div', {className:'chart-label'}, 'Price'),
-            h(PriceChart, {candles:chartData.candles})
-          ),
-          h('div', {className:'chart-wrap'},
-            h('div', {className:'chart-label'}, 'Volume'),
-            h(VolumeChart, {candles:chartData.candles})
-          )
-        )
-      )
-    )
-  );
-}
-
-function EditModal({item, onSave, onClose}) {
-  const [buyDate,  setBuyDate]  = useState(item.buyDate||'');
-  const [buyPrice, setBuyPrice] = useState(String(item.buyPrice||''));
-  const [buyQty,   setBuyQty]   = useState(String(item.buyQty||''));
-  function doSave() {
-    if (!buyPrice||!buyQty) { alert('Price ane Qty joiye'); return; }
-    onSave({...item, buyDate, buyPrice:parseFloat(buyPrice), buyQty:parseInt(buyQty)});
-    onClose();
-  }
-  return h('div', {className:'modal-overlay', onClick:e=>{if(e.target===e.currentTarget)onClose();}},
-    h('div', {className:'modal'},
-      h('div', {className:'modal-handle'}),
-      h('div', {style:{padding:'16px 18px 14px',borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between',alignItems:'center',position:'relative'}},
-        h('div', {style:{fontWeight:800,fontSize:16}}, '✏️ Edit — '+(item.sym||item.name)),
-        h('button', {className:'modal-close', onClick:onClose}, '✕')
-      ),
-      h('div', {style:{padding:'16px 18px 8px'}},
-        h('label', {style:{fontSize:11,color:'var(--text2)',textTransform:'uppercase',letterSpacing:'0.6px',fontWeight:700,display:'block',marginBottom:4}}, 'Buy Date'),
-        h('input', {className:'add-input', type:'date', value:buyDate, onChange:e=>setBuyDate(e.target.value)}),
-        h('label', {style:{fontSize:11,color:'var(--text2)',textTransform:'uppercase',letterSpacing:'0.6px',fontWeight:700,display:'block',marginBottom:4}}, 'Buy Price (₹)'),
-        h('input', {className:'add-input', type:'number', value:buyPrice, onChange:e=>setBuyPrice(e.target.value)}),
-        h('label', {style:{fontSize:11,color:'var(--text2)',textTransform:'uppercase',letterSpacing:'0.6px',fontWeight:700,display:'block',marginBottom:4}}, 'Quantity'),
-        h('input', {className:'add-input', type:'number', value:buyQty, onChange:e=>setBuyQty(e.target.value)}),
-        h('button', {className:'btn-primary', onClick:doSave}, '✓ Save Changes')
-      )
-    )
-  );
-}
-
-function SellModal({item, currentPrice, onSell, onClose}) {
-  const [sellDate,  setSellDate]  = useState(new Date().toISOString().slice(0,10));
-  const [sellPrice, setSellPrice] = useState(currentPrice ? String(currentPrice.toFixed(2)) : '');
-  const [sellQty,   setSellQty]   = useState(String(item.buyQty||''));
-  const maxQty = item.buyQty;
-  const sp = parseFloat(sellPrice)||0;
-  const sq = parseInt(sellQty)||0;
-  const invested = item.buyPrice * sq;
-  const saleVal  = sp * sq;
-  const realPnl  = saleVal - invested;
-  const realPct  = invested > 0 ? realPnl/invested*100 : 0;
-  const up = realPnl >= 0;
-  function doSell() {
-    if (!sellDate||!sellPrice||!sellQty) { alert('Badha fields fill karo'); return; }
-    if (sq > maxQty) { alert('Quantity '+maxQty+' thi vadhu nahi hoi shake'); return; }
-    onSell({sellDate, sellPrice:sp, sellQty:sq});
-    onClose();
-  }
-  return h('div', {className:'modal-overlay', onClick:e=>{if(e.target===e.currentTarget)onClose();}},
-    h('div', {className:'modal'},
-      h('div', {className:'modal-handle'}),
-      h('div', {style:{padding:'16px 18px 14px',borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between',alignItems:'center',position:'relative'}},
-        h('div', {style:{fontWeight:800,fontSize:16}}, '💰 Sell — '+(item.sym||item.name)),
-        h('button', {className:'modal-close', onClick:onClose}, '✕')
-      ),
-      h('div', {style:{padding:'16px 18px 8px'}},
-        h('label', {style:{fontSize:11,color:'var(--text2)',textTransform:'uppercase',letterSpacing:'0.6px',fontWeight:700,display:'block',marginBottom:4}}, 'Sell Date'),
-        h('input', {className:'add-input', type:'date', value:sellDate, onChange:e=>setSellDate(e.target.value)}),
-        h('label', {style:{fontSize:11,color:'var(--text2)',textTransform:'uppercase',letterSpacing:'0.6px',fontWeight:700,display:'block',marginBottom:4}}, 'Sell Price (₹)'),
-        h('input', {className:'add-input', type:'number', value:sellPrice, onChange:e=>setSellPrice(e.target.value), placeholder:'Current: ₹'+(currentPrice?currentPrice.toFixed(2):'—')}),
-        h('label', {style:{fontSize:11,color:'var(--text2)',textTransform:'uppercase',letterSpacing:'0.6px',fontWeight:700,display:'block',marginBottom:4}}, 'Quantity (Max: '+maxQty+')'),
-        h('input', {className:'add-input', type:'number', value:sellQty, onChange:e=>setSellQty(e.target.value), max:maxQty}),
-        // Live P&L preview
-        sp > 0 && sq > 0 && h('div', {style:{background:'var(--bg3)',borderRadius:'var(--radius-sm)',padding:'12px 14px',border:'1px solid var(--border)',marginBottom:10}},
-          h('div', {style:{fontSize:10,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.6px',fontWeight:700,marginBottom:8}}, 'Realized P&L Preview'),
-          h('div', {style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}},
-            h('div', null, h('div',{style:{fontSize:10,color:'var(--text3)'}}, 'Sale Value'), h('div',{style:{fontFamily:'var(--mono)',fontWeight:700,fontSize:13}}, '₹'+fmt(saleVal,0))),
-            h('div', null, h('div',{style:{fontSize:10,color:'var(--text3)'}}, 'Invested'), h('div',{style:{fontFamily:'var(--mono)',fontWeight:700,fontSize:13}}, '₹'+fmt(invested,0))),
-            h('div', {style:{gridColumn:'1/-1'}},
-              h('div',{style:{fontSize:10,color:'var(--text3)'}}, 'Realized P&L'),
-              h('div',{style:{fontFamily:'var(--mono)',fontWeight:800,fontSize:16,color:up?'var(--green)':'var(--red)'}},
-                (up?'+':'')+'₹'+Math.abs(realPnl).toFixed(0)+' ('+(up?'+':'')+realPct.toFixed(2)+'%)'
-              )
-            )
-          )
-        ),
-        h('button', {className:'btn-primary', style:{background:up?'linear-gradient(135deg,#00b87a,#009060)':'linear-gradient(135deg,var(--red),var(--red2,#c0294a))'}, onClick:doSell}, '💰 Confirm Sell')
-      )
-    )
-  );
-}
-
-function AddModal({title, allOptions, existing, onAdd, onClose, isPortfolio}) {
-  const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState(null);
-  const [buyDate, setBuyDate] = useState('');
-  const [buyPrice, setBuyPrice] = useState('');
-  const [buyQty, setBuyQty] = useState('');
-
-  const existingIds = existing.map(e => e.id);
-  const isStock = allOptions === STOCKS_META; // distinguish stocks vs indices
-
-  // For indices: simple local filter. For stocks: use dynamic search hook.
-  const { results: dynamicResults, searching } = useStockSearch(
-    isStock ? search : '', existingIds
-  );
-
-  const filtered = isStock
-    ? dynamicResults
-    : allOptions.filter(o => {
-        if (!search.trim()) return !existingIds.includes(o.id);
-        const q = search.trim().toLowerCase();
-        return !existingIds.includes(o.id) && (
-          (o.name||'').toLowerCase().startsWith(q) ||
-          (o.id||'').toLowerCase().startsWith(q)
-        );
+    const req = https.request(options, res => {
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => {
+        const buf = Buffer.concat(chunks);
+        const enc = (res.headers['content-encoding'] || '').toLowerCase();
+        function parse(text) {
+          try { resolve(JSON.parse(text)); }
+          catch(e) { reject(new Error('Parse error: ' + text.slice(0,200))); }
+        }
+        if (enc.includes('br')) {
+          zlib.brotliDecompress(buf, (err, d) => err ? reject(err) : parse(d.toString()));
+        } else if (enc.includes('gzip')) {
+          zlib.gunzip(buf, (err, d) => err ? reject(err) : parse(d.toString()));
+        } else if (enc.includes('deflate')) {
+          zlib.inflate(buf, (err, d) => err ? reject(err) : parse(d.toString()));
+        } else {
+          parse(buf.toString());
+        }
       });
-
-  function doAdd() {
-    if (!selected) return;
-    if (isPortfolio) {
-      if (!buyDate||!buyPrice||!buyQty) { alert('Badhu fields fill karo'); return; }
-      onAdd({...selected, buyDate, buyPrice:parseFloat(buyPrice), buyQty:parseInt(buyQty)});
-    } else {
-      onAdd(selected);
-    }
-    onClose();
-  }
-
-  return h('div', {className:'modal-overlay', onClick:e=>{if(e.target===e.currentTarget)onClose();}},
-    h('div', {className:'modal'},
-      h('div', {className:'modal-handle'}),
-      h('div', {style:{padding:'16px 18px 14px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center', position:'relative'}},
-        h('div', {style:{fontSize:16,fontWeight:800}}, title),
-        h('button', {className:'modal-close', onClick:onClose}, '✕')
-      ),
-      h('div', {style:{padding:'16px 18px 8px'}},
-      h('input', {
-        className:'add-input',
-        placeholder: isStock ? '🔍 Symbol ya naam type karo (e.g. INFY, Tata...)' : '🔍 Search index...',
-        value:search,
-        onChange:e=>{ setSearch(e.target.value); setSelected(null); },
-        autoFocus:true
-      }),
-      search.length > 0 && h('div', {className:'search-results'},
-        searching && filtered.length === 0
-          ? h('div', {className:'search-item', style:{color:'var(--text2)'}}, '🔍 Searching...')
-          : filtered.length === 0
-            ? h('div', {className:'search-item', style:{color:'var(--text2)'}}, 'No results — proxy connected che?')
-            : filtered.map(o =>
-                h('div', {key:o.id||o.sym, className:'search-item '+(selected?.id===o.id?'sel':''),
-                  onClick:()=>{ setSelected(o); setSearch(o.sym||o.name||o.id); }
-                },
-                  h('span', null,
-                    h('b', null, o.sym||o.id.toUpperCase()),
-                    ' — ',
-                    o.name||o.desc||'',
-                    o.exchange ? h('span', {style:{fontSize:10,color:'var(--text3)',marginLeft:6}}, o.exchange) : null,
-                    o.sector  ? h('span', {className:'sector-badge '+(SECTOR_MAP[o.sector]||''), style:{marginLeft:6}}, o.sector) : null
-                  )
-                )
-              )
-      ),
-      selected && isPortfolio && h('div', null,
-        h('input', {className:'add-input', type:'date', value:buyDate, onChange:e=>setBuyDate(e.target.value)}),
-        h('input', {className:'add-input', type:'number', placeholder:'Buy Price (₹)', value:buyPrice, onChange:e=>setBuyPrice(e.target.value)}),
-        h('input', {className:'add-input', type:'number', placeholder:'Quantity', value:buyQty, onChange:e=>setBuyQty(e.target.value)}),
-      ),
-      h('button', {className:'btn-primary', disabled:!selected, onClick:doAdd}, '+ Add')
-      )
-    )
-  );
+    });
+    req.on('error', reject);
+    req.setTimeout(15000, () => { req.destroy(); reject(new Error('Timeout')); });
+    req.end();
+  });
 }
 
-function LockScreen({passcode, onUnlock}) {
-  const [input, setInput] = useState('');
-  const [shake, setShake] = useState(false);
-  function press(k) {
-    if (k==='del') { setInput(p=>p.slice(0,-1)); return; }
-    const next = input+k;
-    setInput(next);
-    if (next.length===4) {
-      if (next===passcode) { onUnlock(); }
-      else { setShake(true); setTimeout(()=>{setShake(false);setInput('');},500); }
-    }
+// ── /quotes — use v8/chart with interval=1d to get current price + meta
+// Chart API works, v7/quote API blocks. So we fetch each symbol via chart API.
+app.get('/quotes', async (req, res) => {
+  try {
+    const ids = (req.query.ids||'').split(',').filter(Boolean);
+    if (!ids.length) return res.json([]);
+
+    // Fetch all in parallel using chart API (which works!)
+    const results = await Promise.all(ids.map(async id => {
+      try {
+        const sym = encodeURIComponent(SYMBOL_MAP[id]||id);
+        const path = `/v8/finance/chart/${sym}?range=5d&interval=1d&includePrePost=false&formatted=false`;
+        const data = await fetchYahoo(path);
+        const r = data?.chart?.result?.[0];
+        if (!r) return {id, error:true};
+
+        const meta = r.meta || {};
+        const q = r.indicators?.quote?.[0] || {};
+        const ts = r.timestamp || [];
+        const lastIdx = ts.length - 1;
+
+        // Get last close as current price
+        const closes = q.close || [];
+        const opens  = q.open  || [];
+        const highs  = q.high  || [];
+        const lows   = q.low   || [];
+        const vols   = q.volume|| [];
+
+        const price    = meta.regularMarketPrice || closes[lastIdx];
+        const prevClose= meta.previousClose || meta.chartPreviousClose || closes[lastIdx-1];
+        const change   = price && prevClose ? price - prevClose : null;
+        const changePct= change && prevClose ? (change/prevClose)*100 : null;
+
+        return {
+          id,
+          price,
+          change,
+          changePct,
+          dayHigh:     meta.regularMarketDayHigh  || highs[lastIdx],
+          dayLow:      meta.regularMarketDayLow   || lows[lastIdx],
+          fiftyTwoWkH: meta.fiftyTwoWeekHigh,
+          fiftyTwoWkL: meta.fiftyTwoWeekLow,
+          prevClose,
+          open:        meta.regularMarketOpen     || opens[lastIdx],
+          volume:      meta.regularMarketVolume   || vols[lastIdx],
+          mktCap:      meta.marketCap,
+          pe:          null,
+        };
+      } catch(e) {
+        console.error(`Error fetching ${id}:`, e.message);
+        return {id, error:true};
+      }
+    }));
+
+    res.json(results);
+  } catch(e) {
+    console.error('Quotes error:', e.message);
+    res.status(500).json({error: e.message});
   }
-  return h('div', {className:'lock-screen'},
-    h('div', {style:{fontSize:40}}, '🔒'),
-    h('div', {style:{fontSize:20,fontWeight:700}}, 'MarketTracker'),
-    h('div', {className:'lock-dots', style:{transform:shake?'translateX(6px)':'none',transition:'transform 0.05s'}},
-      [0,1,2,3].map(i=>h('div',{key:i,className:'lock-dot '+(input.length>i?'filled':'')}))
-    ),
-    h('div', {className:'lock-keypad'},
-      ['1','2','3','4','5','6','7','8','9'].map(k=>
-        h('div', {key:k, className:'lock-key', onClick:()=>press(k)}, k)
-      ),
-      h('div', {className:'lock-key', style:{gridColumn:2}, onClick:()=>press('0')}, '0'),
-      h('div', {className:'lock-key del', style:{gridColumn:3}, onClick:()=>press('del')}, '⌫')
-    )
-  );
-}
+});
 
-function PnlBarChart({portfolio, prices}) {
-  if (!portfolio.length) return null;
-  const items = portfolio.map(s=>{
-    const p = prices[s.id];
-    const cur = (p?.price||s.buyPrice)*s.buyQty;
-    const inv = s.buyPrice*s.buyQty;
-    const pnl = cur-inv;
-    const pct = inv>0 ? pnl/inv*100 : 0;
-    return {sym:s.sym||s.id.toUpperCase().slice(0,8), pnl, pct};
-  }).sort((a,b)=>b.pnl-a.pnl);
-  const max = Math.max(...items.map(i=>Math.abs(i.pnl)),1);
-  return h('div', {style:{margin:'0 16px 16px',background:'var(--bg3)',borderRadius:12,padding:14,border:'1px solid var(--border)'}},
-    h('div', {style:{fontSize:11,color:'var(--text2)',marginBottom:10,textTransform:'uppercase',letterSpacing:'0.5px'}}, 'Stock-wise P&L'),
-    items.map(it=>
-      h('div', {key:it.sym, style:{marginBottom:10}},
-        h('div', {style:{display:'flex',justifyContent:'space-between',marginBottom:3}},
-          h('span', {style:{fontSize:12,fontWeight:600}}, it.sym),
-          h('span', {style:{fontSize:12,color:it.pnl>=0?'var(--green)':'var(--red)',fontWeight:700}},
-            (it.pnl>=0?'+':'')+'₹'+Math.abs(it.pnl).toFixed(0),' (',fmtPct(it.pct),')')
-        ),
-        h('div', {style:{background:'var(--border)',borderRadius:3,height:5,overflow:'hidden'}},
-          h('div', {style:{height:'100%',borderRadius:3,width:Math.abs(it.pnl)/max*100+'%',background:it.pnl>=0?'var(--green)':'var(--red)'}})
-        )
-      )
-    )
-  );
-}
-
-function PullToRefresh({onRefresh, children}) {
-  const [pulling, setPulling] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [pullY, setPullY] = useState(0);
-  const startY = useRef(null);
-  const contentRef = useRef(null);
-  const inputFocused = useRef(false);
-
-  // Track any input focus inside content
-  function onFocusIn(e) { if (e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA') inputFocused.current=true; }
-  function onFocusOut(e) { if (e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA') inputFocused.current=false; }
-
-  function onTouchStart(e) {
-    if (inputFocused.current) return;
-    if (e.target.closest('input,textarea,button,select')) return;
-    const el = contentRef.current;
-    if (el && el.scrollTop === 0) startY.current = e.touches[0].clientY;
+// ── /chart — same working approach
+app.get('/chart', async (req, res) => {
+  try {
+    const {id, range='1d', interval='15m'} = req.query;
+    if (!id) return res.status(400).json({error:'id required'});
+    const sym = SYMBOL_MAP[id]||id;
+    const path = `/v8/finance/chart/${encodeURIComponent(sym)}?range=${range}&interval=${interval}&includePrePost=false&formatted=false`;
+    const data = await fetchYahoo(path);
+    const chart = data?.chart?.result?.[0];
+    if (!chart) return res.status(404).json({error:'No data'});
+    const ts = chart.timestamp||[];
+    const q = chart.indicators?.quote?.[0]||{};
+    const candles = ts.map((t,i)=>({
+      t:t*1000, o:q.open?.[i], h:q.high?.[i],
+      l:q.low?.[i], c:q.close?.[i], v:q.volume?.[i]
+    })).filter(c=>c.o!=null&&c.c!=null);
+    res.json({id, range, interval, candles});
+  } catch(e) {
+    console.error('Chart error:', e.message);
+    res.status(500).json({error: e.message});
   }
-  function onTouchMove(e) {
-    if (startY.current === null) return;
-    const dy = e.touches[0].clientY - startY.current;
-    if (dy > 8) { setPulling(true); setPullY(Math.min(dy * 0.4, 60)); }
-  }
-  async function onTouchEnd() {
-    if (pullY > 40) {
-      setRefreshing(true); setPullY(0); setPulling(false);
-      await onRefresh();
-      setTimeout(() => setRefreshing(false), 600);
-    } else { setPulling(false); setPullY(0); }
-    startY.current = null;
-  }
+});
 
-  return h('div', {
-    ref:contentRef, className:'content',
-    onTouchStart, onTouchMove, onTouchEnd,
-    onFocusIn, onFocusOut
-  },
-    h('div', {className:'ptr-indicator '+(pulling||refreshing?'visible':'')},
-      refreshing
-        ? h('span', null, h('span', {className:'ptr-spin'}, '⟳'), ' Refreshing...')
-        : h('span', null, pullY > 30 ? '↑ Release to refresh' : '↓ Pull to refresh')
-    ),
-    children
-  );
-}
+// ── /search — Yahoo Finance autocomplete for any NSE/BSE stock
+app.get('/search', async (req, res) => {
+  try {
+    const q = (req.query.q || '').trim();
+    if (!q || q.length < 1) return res.json([]);
 
-// ═══════════════════════════════════════════════════════════
-// MAIN APP
-// ═══════════════════════════════════════════════════════════
-const TABS = [
-  {id:'indices',   icon:'📊', label:'Indices'},
-  {id:'watchlist', icon:'👁',  label:'Watchlist'},
-  {id:'portfolio', icon:'💼', label:'Portfolio'},
-  {id:'pnl',       icon:'📈', label:'P&L'},
-  {id:'settings',  icon:'⚙️', label:'Settings'},
-];
+    // Try both NSE (.NS) and BSE (.BO) suffixed queries + plain symbol
+    const queries = [q + '.NS', q + '.BO', q];
+    const path = `/v1/finance/search?q=${encodeURIComponent(q)}&lang=en-US&region=IN&quotesCount=20&newsCount=0&listsCount=0&enableFuzzyQuery=false&enableCb=false&enableNavLinks=false&enableEnhancedTrivialQuery=true`;
+    const data = await fetchYahoo(path);
 
-function App() {
-  const [tab, setTab] = useState('indices');
-  const [theme, setTheme] = useState(() => localStorage.getItem('theme')||'dark');
-  const [fontSize, setFontSize] = useState(() => localStorage.getItem('fontSize')||'medium');
-  const [passcodeEnabled, setPasscodeEnabled] = useState(() => !!localStorage.getItem('passcode'));
-  const [passcode, setPasscode] = useState(() => localStorage.getItem('passcode')||'1234');
-  const [locked, setLocked] = useState(() => !!localStorage.getItem('passcode'));
-  const [proxyUrlInput, setProxyUrlInput] = useState(() => localStorage.getItem('proxyUrl')||'http://localhost:3001');
-
-  const [indices,   setIndices]   = useState(() => { try{return JSON.parse(localStorage.getItem('indices'))||INDICES_META.slice(0,5)}catch{return INDICES_META.slice(0,5)} });
-  const [watchlist, setWatchlist] = useState(() => { try{return JSON.parse(localStorage.getItem('watchlist'))||[STOCKS_META[0],STOCKS_META[3],STOCKS_META[4],STOCKS_META[5]]}catch{return [STOCKS_META[0],STOCKS_META[3],STOCKS_META[4],STOCKS_META[5]]} });
-  const [portfolio, setPortfolio] = useState(() => { try{return JSON.parse(localStorage.getItem('portfolio'))||[{...STOCKS_META[4],buyDate:'2024-06-15',buyPrice:820,buyQty:50},{...STOCKS_META[5],buyDate:'2024-08-22',buyPrice:1100,buyQty:30},{...STOCKS_META[3],buyDate:'2024-11-10',buyPrice:1480,buyQty:20}]}catch{return []} });
-
-  const [idxFilter,  setIdxFilter]  = useState('Default');
-  const [wlFilter,   setWlFilter]   = useState('Default');
-  const [portFilter, setPortFilter] = useState('Default');
-  const [idxSearch,  setIdxSearch]  = useState('');
-  const [wlSearch,   setWlSearch]   = useState('');
-  const [detail,     setDetail]     = useState(null);
-  const [showAdd,    setShowAdd]    = useState(null);
-  const [editItem,   setEditItem]   = useState(null); // item to edit
-  const [sellItem,   setSellItem]   = useState(null); // item to sell
-  const [soldHoldings, setSoldHoldings] = useState(() => { try{return JSON.parse(localStorage.getItem('soldHoldings'))||[]}catch{return []} });
-
-  // Save to localStorage
-  useEffect(()=>{ localStorage.setItem('indices',JSON.stringify(indices)); }, [indices]);
-  useEffect(()=>{ localStorage.setItem('watchlist',JSON.stringify(watchlist)); }, [watchlist]);
-  useEffect(()=>{ localStorage.setItem('portfolio',JSON.stringify(portfolio)); }, [portfolio]);
-  useEffect(()=>{ localStorage.setItem('soldHoldings',JSON.stringify(soldHoldings)); }, [soldHoldings]);
-  useEffect(()=>{
-    localStorage.setItem('theme', theme);
-    localStorage.setItem('fontSize', fontSize);
-    document.documentElement.className = 'font-' + fontSize;
-    document.body.className = theme === 'light' ? 'light' : '';
-  }, [theme, fontSize]);
-
-  // Collect all IDs to fetch
-  const allIds = [...new Set([...indices,...watchlist,...portfolio].map(x=>x.id))];
-  const {prices, status, lastUpdated, countdown, refresh, setProxyUrl} = useLivePrices(allIds);
-
-  function saveProxyUrl() {
-    localStorage.setItem('proxyUrl', proxyUrlInput);
-    setProxyUrl(proxyUrlInput);
-    setTimeout(refresh, 300);
-  }
-
-  function enablePasscode() {
-    const p = prompt('4-digit passcode set karo:');
-    if (p && p.length===4 && /^\d+$/.test(p)) {
-      setPasscode(p); setPasscodeEnabled(true); localStorage.setItem('passcode',p);
-    } else { alert('Exactly 4 digits joiye'); }
-  }
-  function disablePasscode() { setPasscodeEnabled(false); localStorage.removeItem('passcode'); }
-
-  // Holding period calculator
-  function holdingPeriod(buyDate) {
-    if (!buyDate) return null;
-    const buy = new Date(buyDate);
-    const now = new Date();
-    const days = Math.floor((now - buy) / (1000*60*60*24));
-    if (days < 30) return days+'d';
-    if (days < 365) return Math.floor(days/30)+'mo';
-    const yrs = Math.floor(days/365);
-    const mos = Math.floor((days % 365)/30);
-    return mos > 0 ? yrs+'y '+mos+'mo' : yrs+'y';
-  }
-
-  // ── Indices Tab
-  function IndicesTab() {
-    const filtered = idxSearch
-      ? indices.filter(x => { const q=idxSearch.toLowerCase(); return x.name.toLowerCase().startsWith(q) || x.desc.toLowerCase().startsWith(q); })
-      : indices;
-    const sorted = applyFilter(filtered, indices, prices, idxFilter);
-    const suggestions = idxSearch.length > 0
-      ? INDICES_META.filter(x => {
-          const q = idxSearch.toLowerCase();
-          return !indices.find(i=>i.id===x.id) && (x.name.toLowerCase().startsWith(q) || x.desc.toLowerCase().startsWith(q));
-        })
-      : [];
-    return h('div', null,
-      h(RefreshBar, {status, lastUpdated, countdown, onRefresh:refresh}),
-      status==='error' && h('div', {className:'error-banner'}, '⚠ Proxy server thi connect nathi thatu.'),
-      suggestions.length > 0 && h('div', {className:'search-suggestions'},
-        suggestions.map(s => h('div', {key:s.id, className:'search-suggestion-item',
-          onClick:()=>{ setIndices(p=>[...p,s]); setIdxSearch(''); }
-        },
-          h('span', null, s.name),
-          h('span', {className:'suggestion-add'}, '+ Add')
-        ))
-      ),
-      h(FilterBar, {active:idxFilter, onChange:setIdxFilter}),
-      !sorted.length && h('div',{className:'empty-state'},h('div',{className:'empty-icon'},'📊'),h('div',{className:'empty-text'},idxSearch?'No results':'Koi index nathi'),h('div',{className:'empty-sub'},idxSearch?'Upar suggestions joyo':'Search thi add karo')),
-      sorted.map(item => h(PriceRow, {key:item.id, item, p:prices[item.id], isIndex:true,
-        onPress:()=>setDetail({item,isIndex:true}),
-        onRemove:()=>setIndices(p=>p.filter(x=>x.id!==item.id))
-      }))
+    const quotes = data?.quotes || [];
+    // Filter to Indian exchange stocks only (NSE/BSE)
+    const indian = quotes.filter(q =>
+      q.exchange === 'NSI' || q.exchange === 'BSE' ||
+      (q.symbol && (q.symbol.endsWith('.NS') || q.symbol.endsWith('.BO')))
     );
+
+    const results = indian.map(q => {
+      const rawSym = q.symbol || '';
+      // Generate a clean id from symbol
+      const sym = rawSym.replace(/\.(NS|BO)$/, '');
+      const exchange = rawSym.endsWith('.BO') ? 'BSE' : 'NSE';
+      const id = (sym + (exchange === 'BSE' ? '_bse' : '')).toLowerCase().replace(/[^a-z0-9_]/g,'_');
+      return {
+        id,
+        sym,
+        name: q.longname || q.shortname || sym,
+        sector: q.sector || '',
+        exchange,
+        yahooSym: rawSym,
+      };
+    });
+
+    // Also add to SYMBOL_MAP dynamically so /quotes works
+    results.forEach(r => {
+      if (!SYMBOL_MAP[r.id]) SYMBOL_MAP[r.id] = r.yahooSym;
+    });
+
+    res.json(results);
+  } catch(e) {
+    console.error('Search error:', e.message);
+    res.status(500).json({error: e.message});
   }
+});
 
-  // ── Watchlist Tab
-  function WatchlistTab() {
-    const filtered = wlSearch
-      ? watchlist.filter(x => {
-          const q = wlSearch.toLowerCase();
-          const sym  = (x.sym||'').toLowerCase();
-          const name = (x.name||'').toLowerCase();
-          return sym.startsWith(q) || name.startsWith(q);
-        })
-      : watchlist;
-    const sorted = applyFilter(filtered, watchlist, prices, wlFilter);
-    const wlExistingIds = watchlist.map(x => x.id);
-    const { results: wlDynResults, searching: wlSearching } = useStockSearch(wlSearch, wlExistingIds);
-    return h('div', null,
-      h(RefreshBar, {status, lastUpdated, countdown, onRefresh:refresh}),
-      status==='error' && h('div', {className:'error-banner'}, '⚠ Proxy server offline che.'),
-      wlSearch.length > 0 && h('div', {className:'search-suggestions'},
-        wlSearching && wlDynResults.length === 0
-          ? h('div', {className:'search-suggestion-item', style:{color:'var(--text2)',fontFamily:'var(--mono)',fontSize:12}}, '🔍 Searching NSE/BSE...')
-          : wlDynResults.length === 0
-            ? h('div', {className:'search-suggestion-item', style:{color:'var(--text2)',fontFamily:'var(--mono)',fontSize:12}}, 'No results found')
-            : wlDynResults.map(s => h('div', {key:s.id||s.sym, className:'search-suggestion-item',
-                onClick:()=>{ setWatchlist(p=>[...p,s]); setWlSearch(''); }
-              },
-              h('span', null,
-                h('b',null,s.sym||s.id),
-                ' — ', s.name,
-                s.exchange ? h('span',{style:{fontSize:10,color:'var(--text3)',marginLeft:5}},s.exchange) : null,
-                s.sector   ? h('span',{className:'sector-badge '+(SECTOR_MAP[s.sector]||''),style:{marginLeft:5}},s.sector) : null
-              ),
-              h('span', {className:'suggestion-add'}, '+ Add')
-            ))
-      ),
-      h(FilterBar, {active:wlFilter, onChange:setWlFilter}),
-      !sorted.length && h('div',{className:'empty-state'},h('div',{className:'empty-icon'},'👁'),h('div',{className:'empty-text'},wlSearch?'No results':'Watchlist empty'),h('div',{className:'empty-sub'},wlSearch?'Upar suggestions joyo':'Search thi add karo')),
-      sorted.map(item => h(PriceRow, {key:item.id, item, p:prices[item.id], isIndex:false,
-        onPress:()=>setDetail({item,isIndex:false}),
-        onRemove:()=>setWatchlist(p=>p.filter(x=>x.id!==item.id))
-      }))
-    );
-  }
 
-  // ── Portfolio Tab
-  function PortfolioTab() {
-    const sorted = applyFilter(portfolio, portfolio, prices, portFilter);
-    const totalSoldPnl = soldHoldings.reduce((s,x)=>s+(x.sellPrice-x.buyPrice)*x.sellQty, 0);
-    return h('div', null,
-      h(RefreshBar, {status, lastUpdated, countdown, onRefresh:refresh}),
-      h(FilterBar, {active:portFilter, onChange:setPortFilter, isPortfolio:true}),
-      !sorted.length && h('div',{className:'empty-state'},h('div',{className:'empty-icon'},'💼'),h('div',{className:'empty-text'},'Portfolio empty'),h('div',{className:'empty-sub'},'+ button thi stocks add karo')),
-      sorted.map(item => {
-        const p = prices[item.id];
-        const loaded = p && p.price;
-        const curVal  = loaded ? p.price*item.buyQty : null;
-        const invested = item.buyPrice*item.buyQty;
-        const pnl     = loaded ? curVal-invested : null;
-        const pnlPct  = (pnl!=null && invested>0) ? pnl/invested*100 : null;
-        const pnlUp   = pnl!=null && pnl>=0;
-        return h('div', {key:item.id},
-          h(PriceRow, {item, p, isIndex:false,
-            onPress:()=>setDetail({item,isIndex:false}),
-            onRemove:()=>setPortfolio(prev=>prev.filter(x=>x.id!==item.id)),
-            holdingBadge: holdingPeriod(item.buyDate)
-          }),
-          h('div', {className:'port-extra'},
-            h('div', {className:'port-meta-card'},
-              h('div', {className:'port-meta-row'},
-                h('div', {className:'port-meta-item'},
-                  h('span', {className:'port-meta-label'}, 'AVG PRICE'),
-                  h('span', {className:'port-meta-val'}, '₹'+item.buyPrice)
-                ),
-                h('div', {className:'port-meta-item'},
-                  h('span', {className:'port-meta-label'}, 'QTY'),
-                  h('span', {className:'port-meta-val'}, item.buyQty)
-                ),
-                h('div', {className:'port-meta-item'},
-                  h('span', {className:'port-meta-label'}, 'INVESTED'),
-                  h('span', {className:'port-meta-val'}, '₹'+fmt(invested,0))
-                ),
-                h('div', {className:'port-meta-item'},
-                  h('span', {className:'port-meta-label'}, 'CUR VALUE'),
-                  h('span', {className:'port-meta-val'}, loaded?'₹'+fmt(curVal,0):'—')
-                ),
-              ),
-              h('div', {className:'port-pnl-row', style:{borderTop:'1px solid var(--border)',marginTop:8,paddingTop:8}},
-                h('span', {className:'port-meta-label'}, 'P&L'),
-                h('span', {className:'port-meta-val', style:{color:pnlUp?'var(--green)':'var(--red)',fontSize:13}},
-                  pnl!=null ? (pnlUp?'+':'')+'₹'+Math.abs(pnl).toFixed(0)+' ('+(pnlPct!=null?(pnlUp?'+':'')+pnlPct.toFixed(2)+'%':'—')+')' : '—'
-                )
-              ),
-              // Edit + Sell buttons
-              h('div', {style:{display:'flex',gap:8,marginTop:10}},
-                h('button', {
-                  style:{flex:1,background:'var(--bg2)',border:'1px solid var(--border)',color:'var(--text2)',borderRadius:'var(--radius-xs)',padding:'7px 0',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'var(--font)'},
-                  onClick:()=>setEditItem(item)
-                }, '✏️ Edit'),
-                h('button', {
-                  style:{flex:1,background:'var(--red-dim)',border:'1px solid rgba(255,61,107,0.3)',color:'var(--red)',borderRadius:'var(--radius-xs)',padding:'7px 0',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'var(--font)'},
-                  onClick:()=>setSellItem(item)
-                }, '💰 Sell')
-              )
-            )
-          )
-        );
-      }),
-      // ── Sold Holdings section
-      soldHoldings.length > 0 && h('div', null,
-        h('div', {style:{padding:'12px 16px 6px',display:'flex',alignItems:'center',justifyContent:'space-between'}},
-          h('div', {style:{fontSize:11,fontWeight:800,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.8px'}}, 'Sold Holdings'),
-          h('div', {style:{fontSize:12,fontWeight:700,color:totalSoldPnl>=0?'var(--green)':'var(--red)',fontFamily:'var(--mono)'}},
-            'Realized: '+(totalSoldPnl>=0?'+':'')+'₹'+Math.abs(totalSoldPnl).toFixed(0)
-          )
-        ),
-        soldHoldings.map((s,i)=>{
-          const realPnl = (s.sellPrice - s.buyPrice)*s.sellQty;
-          const realPct = s.buyPrice > 0 ? realPnl/(s.buyPrice*s.sellQty)*100 : 0;
-          const up = realPnl >= 0;
-          return h('div', {key:i, style:{padding:'12px 16px',borderBottom:'1px solid var(--border)',background:'var(--bg2)',opacity:0.85}},
-            h('div', {style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}},
-              h('div', null,
-                h('div', {style:{fontWeight:700,fontSize:13}}, s.sym||s.name),
-                h('div', {style:{fontSize:11,color:'var(--text2)',fontFamily:'var(--mono)'}}, 'Sold '+s.sellQty+' @ ₹'+s.sellPrice+' on '+s.sellDate)
-              ),
-              h('div', {style:{textAlign:'right'}},
-                h('div', {style:{fontWeight:800,fontSize:13,color:up?'var(--green)':'var(--red)',fontFamily:'var(--mono)'}},
-                  (up?'+':'')+'₹'+Math.abs(realPnl).toFixed(0)
-                ),
-                h('div', {style:{fontSize:11,color:up?'var(--green)':'var(--red)',fontFamily:'var(--mono)'}},
-                  (up?'+':'')+realPct.toFixed(2)+'%'
-                )
-              )
-            ),
-            h('button', {
-              style:{fontSize:10,color:'var(--text3)',background:'none',border:'none',cursor:'pointer',padding:0},
-              onClick:()=>setSoldHoldings(prev=>prev.filter((_,j)=>j!==i))
-            }, '✕ Remove')
-          );
-        })
-      )
-    );
-  }
-
-  // ── P&L Tab
-  function PnlTab() {
-    const totalInvested = portfolio.reduce((s,st)=>s+st.buyPrice*st.buyQty,0);
-    const totalCurrent  = portfolio.reduce((s,st)=>{const p=prices[st.id];return s+(p?p.price:st.buyPrice)*st.buyQty;},0);
-    const totalPnl      = totalCurrent-totalInvested;
-    const totalPct      = totalInvested>0?totalPnl/totalInvested*100:0;
-    const up            = totalPnl>=0;
-    return h('div', null,
-      h('div', {style:{margin:16}},
-        h('div', {className:'summary-card'},
-          h('div', {className:'summary-label'}, 'Current Portfolio Value'),
-          h('div', {className:'summary-big'}, '₹'+fmt(totalCurrent,0)),
-          h('div', {style:{fontSize:14,color:up?'var(--green)':'var(--red)',fontWeight:600,marginTop:4}},
-            (up?'▲ ':'▼ ')+'₹'+Math.abs(totalPnl).toFixed(0),' total P&L'
-          )
-        )
-      ),
-      h('div', {className:'pnl-grid'},
-        h('div',{className:'pnl-card'},h('div',{className:'pnl-label'},'Invested'),h('div',{className:'pnl-val'},'₹'+fmt(totalInvested,0))),
-        h('div',{className:'pnl-card'},h('div',{className:'pnl-label'},'Total P&L'),h('div',{className:'pnl-val',style:{color:up?'var(--green)':'var(--red)'}},(up?'+':'')+'₹'+totalPnl.toFixed(0))),
-        h('div',{className:'pnl-card'},h('div',{className:'pnl-label'},'Return %'),h('div',{className:'pnl-val',style:{color:up?'var(--green)':'var(--red)'}},fmtPct(totalPct))),
-        h('div',{className:'pnl-card'},h('div',{className:'pnl-label'},'Holdings'),h('div',{className:'pnl-val'},portfolio.length+' stocks')),
-      ),
-      h(PnlBarChart, {portfolio, prices})
-    );
-  }
-
-  // ── Settings Tab
-  function SettingsTab() {
-    return h('div', null,
-      h('div', {className:'settings-section'},
-        h('div', {className:'settings-title'}, 'Appearance'),
-        h('div', {className:'settings-row'},
-          h('div', null, h('div',{className:'settings-row-label'},'Dark Mode')),
-          h('div', {className:'toggle '+(theme==='dark'?'on':''), onClick:()=>setTheme(t=>t==='dark'?'light':'dark')})
-        ),
-        h('div', {className:'settings-row'},
-          h('div', null, h('div',{className:'settings-row-label'},'Font Size')),
-          h('div', {className:'seg-control'},
-            ['small','medium','large'].map(s=>
-              h('div', {key:s, className:'seg-btn '+(fontSize===s?'active':''), onClick:()=>setFontSize(s)},
-                s.charAt(0).toUpperCase()+s.slice(1))
-            )
-          )
-        )
-      ),
-      h('div', {className:'settings-section'},
-        h('div', {className:'settings-title'}, 'Live Data — Proxy Server'),
-        h('div', {className:'settings-row', style:{flexDirection:'column',alignItems:'flex-start',gap:8}},
-          h('div', {style:{display:'flex',width:'100%',justifyContent:'space-between',alignItems:'center'}},
-            h('div', {className:'settings-row-label'}, 'Proxy URL'),
-            h('span', {style:{fontSize:11,fontFamily:'var(--mono)',color:status==='ok'?'var(--green)':status==='error'?'var(--red)':'var(--text2)'}},
-              status==='ok'?'● Live':status==='error'?'● Offline':status==='loading'?'● ...':'● —'
-            )
-          ),
-          h('div', {style:{width:'100%',background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--radius-xs)',padding:'9px 11px',fontSize:11,fontFamily:'var(--mono)',color:'var(--text2)',wordBreak:'break-all'}},
-            proxyUrlInput || 'Not set'
-          ),
-          h('button', {
-            style:{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:'var(--radius-xs)',padding:'7px 14px',fontSize:12,cursor:'pointer',fontFamily:'var(--font)',width:'100%'},
-            onClick:()=>{
-              const newUrl = prompt('Proxy URL enter karo:\n(Browser: http://localhost:3001)\n(Mobile/Render: https://yourapp.onrender.com)', proxyUrlInput);
-              if (newUrl !== null && newUrl.trim()) {
-                const u = newUrl.trim();
-                setProxyUrlInput(u);
-                localStorage.setItem('proxyUrl', u);
-                setProxyUrl(u);
-                setTimeout(refresh, 300);
-              }
-            }
-          }, '✏️ Change Proxy URL')
-        ),
-        h('div', {className:'settings-row'},
-          h('div', null,
-            h('div',{className:'settings-row-label'},'Auto Refresh'),
-            h('div',{className:'settings-row-sub'},`Every ${REFRESH_INTERVAL} seconds`)
-          ),
-          h('div', {style:{fontSize:12,color:'var(--green)'}},'● ON')
-        )
-      ),
-      h('div', {className:'settings-section'},
-        h('div', {className:'settings-title'}, 'Security'),
-        h('div', {className:'settings-row'},
-          h('div', null, h('div',{className:'settings-row-label'},'App Passcode')),
-          h('div', {style:{display:'flex',alignItems:'center',gap:10}},
-            passcodeEnabled && h('span',{style:{fontSize:11,color:'var(--text2)'}},'Set ✓'),
-            h('div', {className:'toggle '+(passcodeEnabled?'on':''), onClick:()=>{passcodeEnabled?disablePasscode():enablePasscode();}})
-          )
-        ),
-        passcodeEnabled && h('div', {className:'settings-row'},
-          h('div',{className:'settings-row-label'},'Test Lock'),
-          h('button', {style:{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:8,padding:'6px 14px',fontSize:12,cursor:'pointer'},
-            onClick:()=>setLocked(true)}, 'Lock Now')
-        ),
-        passcodeEnabled && h('div', {className:'settings-row'},
-          h('div',null,
-            h('div',{className:'settings-row-label'},'Change Passcode'),
-            h('div',{className:'settings-row-sub'},'Current passcode confirm karvu padse')
-          ),
-          h('button', {style:{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:8,padding:'6px 14px',fontSize:12,cursor:'pointer'},
-            onClick:()=>{
-              const old = prompt('Current 4-digit passcode:');
-              if (!old) return;
-              if (old !== passcode) { alert('❌ Wrong passcode'); return; }
-              const newP = prompt('New 4-digit passcode:');
-              if (!newP || newP.length!==4 || !/^\d+$/.test(newP)) { alert('Exactly 4 digits joiye'); return; }
-              const confirm = prompt('Confirm new passcode:');
-              if (newP !== confirm) { alert('❌ Passcode match nathi thayo'); return; }
-              setPasscode(newP); localStorage.setItem('passcode',newP);
-              alert('✅ Passcode changed!');
-            }
-          }, 'Change')
-        ),
-        passcodeEnabled && h('div', {className:'settings-row'},
-          h('div',null,
-            h('div',{className:'settings-row-label', style:{color:'var(--red)'}},'Forgot Passcode?'),
-            h('div',{className:'settings-row-sub'},'Passcode remove karva "RESET" type karo')
-          ),
-          h('button', {style:{background:'var(--red-dim)',border:'1px solid rgba(255,61,107,0.3)',color:'var(--red)',borderRadius:8,padding:'6px 14px',fontSize:12,cursor:'pointer'},
-            onClick:()=>{
-              const confirm = prompt('Passcode remove karva "RESET" type karo:');
-              if (confirm === 'RESET') {
-                disablePasscode();
-                alert('✅ Passcode removed. Settings thi navo set karo.');
-              } else { alert('Cancel — "RESET" j type karvu joiye'); }
-            }
-          }, 'Reset')
-        )
-      ),
-      h('div', {style:{padding:'12px 16px',fontSize:11,color:'var(--text3)',textAlign:'center'}},
-        'MarketTracker — Personal Use Only · Data: Yahoo Finance')
-    );
-  }
-
-  const showFab = ['portfolio'].includes(tab);
-  const addOptions = showAdd==='indices' ? INDICES_META : STOCKS_META;
-  const addExisting = showAdd==='indices' ? indices : showAdd==='watchlist' ? watchlist : portfolio;
-
-  // Render all tabs always (display:none for inactive) to preserve input focus
-  return h('div', {className:'app'},
-    locked && h(LockScreen, {passcode, onUnlock:()=>setLocked(false)}),
-    h('div', {className:'header'},
-      h('div', {className:'header-row'},
-        h('div', null,
-          h('div', {className:'header-title'}, 'MarketTracker'),
-          h('div', {className:'header-sub'},
-            h('span', {className:'live-dot '+(status==='error'?'error':status==='loading'?'loading':'')}),
-            status==='ok' ? 'Live Data' : status==='error' ? 'Proxy Offline' : status==='loading' ? 'Fetching...' : 'Starting...'
-          )
-        ),
-        h('div', {className:'time-chip'},
-          new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})
-        )
-      ),
-      (tab==='indices'||tab==='watchlist') && h('div', {className:'search-bar-wrap', style:{marginTop:8}},
-        h('span', {className:'search-bar-icon'}, '🔍'),
-        h('input', {
-          className:'search-bar',
-          placeholder: tab==='indices' ? 'Search or add index...' : 'Search or add stock...',
-          value: tab==='indices' ? idxSearch : wlSearch,
-          onChange: e => tab==='indices' ? setIdxSearch(e.target.value) : setWlSearch(e.target.value),
-          autoComplete:'off'
-        })
-      )
-    ),
-    h(PullToRefresh, {onRefresh: refresh},
-      h('div', {style:{display:tab==='indices'?'block':'none'}},   h(IndicesTab,   null)),
-      h('div', {style:{display:tab==='watchlist'?'block':'none'}}, h(WatchlistTab, null)),
-      h('div', {style:{display:tab==='portfolio'?'block':'none'}}, h(PortfolioTab, null)),
-      h('div', {style:{display:tab==='pnl'?'block':'none'}},       h(PnlTab,       null)),
-      h('div', {style:{display:tab==='settings'?'block':'none'}},  h(SettingsTab,  null))
-    ),
-    showFab && h('button', {className:'add-fab', onClick:()=>setShowAdd(tab)}, '+'),
-    h('div', {className:'tabbar'},
-      TABS.map(t=>
-        h('div', {key:t.id, className:'tab '+(tab===t.id?'active':''), onClick:()=>setTab(t.id)},
-          h('div', {className:'tab-icon'}, t.icon),
-          h('div', {className:'tab-label'}, t.label)
-        )
-      )
-    ),
-    detail && h(DetailModal, {item:detail.item, p:prices[detail.item.id], isIndex:detail.isIndex, onClose:()=>setDetail(null)}),
-    showAdd && h(AddModal, {
-      title: showAdd==='indices' ? 'Index Add Karo' : 'Stock Add Karo',
-      allOptions: addOptions,
-      existing: addExisting,
-      onAdd: item => {
-        if (showAdd==='indices') setIndices(p=>[...p,item]);
-        else if (showAdd==='watchlist') setWatchlist(p=>[...p,item]);
-        else setPortfolio(p=>[...p,item]);
-      },
-      onClose: ()=>setShowAdd(null),
-      isPortfolio: showAdd==='portfolio'
-    }),
-    editItem && h(EditModal, {
-      item: editItem,
-      onSave: updated => setPortfolio(prev => prev.map(x => x.id===updated.id ? updated : x)),
-      onClose: ()=>setEditItem(null)
-    }),
-    sellItem && h(SellModal, {
-      item: sellItem,
-      currentPrice: prices[sellItem.id]?.price || null,
-      onSell: ({sellDate, sellPrice, sellQty}) => {
-        // Add to sold holdings
-        setSoldHoldings(prev => [...prev, {
-          ...sellItem, sellDate, sellPrice, sellQty
-        }]);
-        // Reduce or remove from portfolio
-        setPortfolio(prev => prev.map(x => {
-          if (x.id !== sellItem.id) return x;
-          const remaining = x.buyQty - sellQty;
-          return remaining > 0 ? {...x, buyQty: remaining} : null;
-        }).filter(Boolean));
-      },
-      onClose: ()=>setSellItem(null)
-    })
-  );
-}
-
-ReactDOM.createRoot(document.getElementById('root')).render(h(App,null));
-</script>
-</body>
-</html>
+const PORT = process.env.PORT||3001;
+app.listen(PORT, ()=>console.log(`Proxy v2.4 on port ${PORT}`));

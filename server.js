@@ -8,7 +8,7 @@ app.use(cors());
 
 const SYMBOL_MAP = {
   // ── Indices ────────────────────────────────────────────────
-  nifty50:'^NSEI', banknifty:'^NSEBANK', sensex:'^BSESN', bankex:'BANKEX.BO',
+  nifty50:'^NSEI', banknifty:'^NSEBANK', sensex:'^BSESN', bankex:'^BSEBANKEX',
   finnifty:'NIFTY_FIN_SERVICE.NS', midcap:'^NSEMDCP50', smallcap:'NIFTYSMLCAP250.NS',
   niftyit:'^CNXIT', niftypharma:'^CNXPHARMA', niftyauto:'^CNXAUTO',
   niftymetal:'^CNXMETAL', niftyfmcg:'^CNXFMCG', niftyrealty:'^CNXREALTY',

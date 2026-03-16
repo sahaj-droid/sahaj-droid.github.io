@@ -489,15 +489,22 @@ const h=React.createElement;
 // ═══════════════════════════════════════════════════════════
 const LOCAL_PROXY  = 'http://localhost:3001';
 const REMOTE_PROXY = localStorage.getItem('remoteProxyUrl') || '';
-const PROXY_URL    = localStorage.getItem('proxyUrl') || LOCAL_PROXY;
+// Use saved URL, or remote if set, else localhost
+const PROXY_URL    = localStorage.getItem('proxyUrl') || REMOTE_PROXY || LOCAL_PROXY;
 const REFRESH_INTERVAL = 30; // seconds
 
-// Smart auto-detect: try local first, then remote
+// Smart auto-detect: try saved/remote first, then local
 async function detectWorkingProxy() {
-  const candidates = [LOCAL_PROXY, REMOTE_PROXY].filter(Boolean);
+  // Candidates in priority order
+  const candidates = [
+    localStorage.getItem('proxyUrl'),
+    REMOTE_PROXY,
+    LOCAL_PROXY
+  ].filter(Boolean).filter((v,i,a) => a.indexOf(v) === i); // dedupe
+
   for (const url of candidates) {
     try {
-      const r = await fetch(url + '/', {signal: AbortSignal.timeout(2500)});
+      const r = await fetch(url + '/', {signal: AbortSignal.timeout(3000)});
       if (r.ok) return url;
     } catch(e) {}
   }
@@ -933,40 +940,53 @@ function useStockSearch(query, existingIds) {
   useEffect(() => {
     const q = (query || '').trim();
     if (q.length < 1) { setResults([]); return; }
+    const ql = q.toLowerCase();
 
-    // First: instant local results from STOCKS_META (starts-with)
-    const local = STOCKS_META.filter(o => {
+    // starts-with check: sym OR name must START with query
+    function matchesStartsWith(o) {
       const sym  = (o.sym||'').toLowerCase();
-      const name = (o.name||'').toLowerCase();
-      return !existingIds.includes(o.id) && (sym.startsWith(q.toLowerCase()) || name.startsWith(q.toLowerCase()));
-    }).slice(0, 8);
+      const name = (o.name||o.shortname||o.longname||'').toLowerCase();
+      return sym.startsWith(ql) || name.startsWith(ql);
+    }
+
+    // Instant local results from STOCKS_META (starts-with only)
+    const local = STOCKS_META.filter(o =>
+      !existingIds.includes(o.id) && matchesStartsWith(o)
+    ).slice(0, 8);
     setResults(local);
 
-    // Then: debounced remote search for any listed stock
+    // Debounced remote search
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       setSearching(true);
       try {
-        const base = localStorage.getItem('proxyUrl') || LOCAL_PROXY;
-        const res = await fetch(`${base}/search?q=${encodeURIComponent(q)}`);
+        // Use the currently active proxy URL
+        const base = localStorage.getItem('proxyUrl') || PROXY_URL;
+        const res = await fetch(`${base}/search?q=${encodeURIComponent(q)}`, {signal: AbortSignal.timeout(5000)});
         if (!res.ok) throw new Error('Search failed');
         const data = await res.json();
-        // Merge: remote results first (deduped), then local extras
+
+        // STRICT: enforce starts-with on remote results too (Yahoo returns fuzzy matches)
+        const remoteFiltered = data.filter(o =>
+          !existingIds.includes(o.id) && matchesStartsWith(o)
+        );
+
+        // Merge: remote first (deduped), then local extras
         const seen = new Set();
         const merged = [];
-        [...data, ...local].forEach(item => {
-          const key = item.sym || item.id;
-          if (!seen.has(key) && !existingIds.includes(item.id)) {
+        [...remoteFiltered, ...local].forEach(item => {
+          const key = (item.sym || item.id || '').toUpperCase();
+          if (key && !seen.has(key) && !existingIds.includes(item.id)) {
             seen.add(key);
             merged.push(item);
           }
         });
-        setResults(merged.slice(0, 10));
+        setResults(merged.slice(0, 12));
       } catch(e) {
-        // Keep local results on error
+        // Keep local results on error — no crash
       }
       setSearching(false);
-    }, 350);
+    }, 300);
 
     return () => clearTimeout(debounceRef.current);
   }, [query, existingIds.join(',')]);
@@ -1667,7 +1687,7 @@ function App() {
   // ── Indices Tab
   function IndicesTab() {
     const filtered = idxSearch
-      ? indices.filter(x => x.name.toLowerCase().includes(idxSearch.toLowerCase()) || x.desc.toLowerCase().includes(idxSearch.toLowerCase()))
+      ? indices.filter(x => { const q=idxSearch.toLowerCase(); return x.name.toLowerCase().startsWith(q) || x.desc.toLowerCase().startsWith(q); })
       : indices;
     const sorted = applyFilter(filtered, indices, prices, idxFilter);
     const suggestions = idxSearch.length > 0

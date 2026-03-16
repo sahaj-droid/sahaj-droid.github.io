@@ -1751,29 +1751,6 @@ function App() {
 ReactDOM.createRoot(document.getElementById('root')).render(h(App,null));
 
 // Register Service Worker with update detection
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
-      .then(reg => {
-        console.log('SW registered:', reg.scope);
-        // Detect new SW waiting — tell it to skip waiting immediately
-        reg.addEventListener('updatefound', () => {
-          const newSW = reg.installing;
-          newSW.addEventListener('statechange', () => {
-            if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
-              newSW.postMessage('SKIP_WAITING');
-            }
-          });
-        });
-      })
-      .catch(err => console.log('SW error:', err));
-
-    // Reload page when new SW takes control (ensures fresh cache)
-    let refreshing = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (!refreshing) { refreshing = true; window.location.reload(); }
-    });
-  });
 }
 </script>
 </body>
